@@ -1,5 +1,6 @@
 export {VCSFrame, WIDTH, HEIGHT, PALETTE, TIA_BUDGET, UNLIMITED, greyscale} from './frame.mjs';
 export {createDisplay} from './display.mjs';
+export {pixels,pixelText} from './pixels.mjs';
 export {createInput} from './input.mjs';
 export {createConsole,SWITCHES} from './console.mjs';
 export {createClock,createLoop} from './loop.mjs';

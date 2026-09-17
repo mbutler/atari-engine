@@ -17,7 +17,7 @@ Open http://127.0.0.1:8043/ for the Arena and Room examples, and `/examples/soun
 
 | Engine | Cartridge |
 | --- | --- |
-| Palette framebuffer and drawing primitives | Maps and sprite artwork |
+| Palette framebuffer, drawing primitives and the artwork format | Maps and sprite artwork |
 | Display scaling and pixel-exact collision detection | Movement and collision rules |
 | Keyboard input, console switches, plus programmatic touch input | Meaning of the action button and of each game variation |
 | Fixed-step timing and pause on blur | Entities, objectives, scoring and persistence |
@@ -32,6 +32,14 @@ about what an overlap means.
 Import from `src/index.mjs`:
 
 - `VCSFrame`, `WIDTH`, `HEIGHT`, `PALETTE`: indexed graphics. `clear`, `background`, `scanlines`, `playfield`, `sprite`, `missile`, and `number` draw the image. `rgba` supports exports and headless tests. `present` displays static frames.
+- `pixels(art)`, `pixelText(rows)`: sprite artwork as something a person can read. Eight
+  columns wide, one line per row, `.` for an empty pixel and any other visible character for
+  a set one; indentation and surrounding blank lines are ignored, so a deliberately empty row
+  is written out in full. Malformed art names the row and shows the line. `pixelText` is the
+  inverse, for reading a sprite back in a test failure. `playfield` accepts the same `./#`
+  notation alongside raw 0s and 1s. Hand-written hex hides mistakes — nobody spots a changed
+  antenna in `0x24` during review, but everyone spots it in the picture. The artwork is still
+  the cartridge's; this is only the format.
 - `frame.scanlines(y, height, colorFor)`: one background colour per scanline, the way a game rewrites COLUBK down the frame. `colorFor(line, offset)` returns a colour, or `null` to leave that line alone. This is where banded skies and gradients come from.
 - `sprite(rows, { copies, spacing, ... })`: NUSIZ. A player can be drawn as two or three
   copies at a spacing of 16, 32 or 64 colour clocks, or as one stretched object, but never

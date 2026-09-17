@@ -105,10 +105,12 @@ export class VCSFrame {
  // Each playfield bit is four color clocks wide. Half fields are 20 bits.
  playfield(bits,{y=0,height=8,color=0x0e,mode='mirror',id=null}={}){
   if(!['mirror','repeat','asymmetric'].includes(mode))throw new RangeError('Unknown playfield mode');
-  if(typeof bits!=='string'||!/^[01]+$/.test(bits)||bits.length!==(mode==='asymmetric'?40:20))throw new RangeError('Playfield requires 20 bits, or 40 in asymmetric mode');
-  const row=mode==='asymmetric'?bits:bits+(mode==='mirror'?[...bits].reverse().join(''):bits);
+  // Accepts the same '.' and '#' notation the sprite art uses, or raw 0s and 1s.
+  const cells=typeof bits==='string'&&/^[.#]+$/.test(bits)?[...bits].map(c=>c==='#'?'1':'0').join(''):bits;
+  if(typeof cells!=='string'||!/^[01]+$/.test(cells)||cells.length!==(mode==='asymmetric'?40:20))throw new RangeError('Playfield requires 20 cells, or 40 in asymmetric mode, written as 0/1 or ./#');
+  const row=mode==='asymmetric'?cells:cells+(mode==='mirror'?[...cells].reverse().join(''):cells);
   this.paint(id,()=>[...row].forEach((bit,i)=>{if(bit==='1')this.rect(i*4,y,4,height,color);}));
-  this.commands.push({kind:'playfield',bits,y,height,color,mode});return this;
+  this.commands.push({kind:'playfield',bits:cells,y,height,color,mode});return this;
  }
  // NUSIZ: a player can be drawn as two or three copies at a fixed spacing, or as one
  // stretched object, but never both. Copies are one register, so they share a bitmap,
