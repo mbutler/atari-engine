@@ -1,4 +1,5 @@
 import {VCSFrame,HEIGHT,pixels} from '../src/index.mjs';
+export {createDisplay} from '../src/index.mjs';
 export const sprites={
  tank:pixels(`
   .#####..

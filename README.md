@@ -59,10 +59,25 @@ Import from `src/index.mjs`:
   collides. A frame tracks up to 32 ids; the hardware has six, so staying near that keeps a
   game honest.
 - `TIA_BUDGET`, `UNLIMITED`: the per-scanline object budget, `{sprites: 2, missiles: 3}` by default, matching two players plus two missiles and a ball. Drawing past it throws and names the scanline. Copies cost one player however many they paint, so two registers legitimately fill a scanline with six objects. Reusing an object further down the screen is free too, which is how real games draw more than two things. Pass `new VCSFrame(PALETTE, {budget})` to raise it, use `UNLIMITED` to lift it, or `null` to switch the check off. A rejected draw leaves the frame untouched.
-- `createDisplay(canvas)`: a reusable canvas presenter for animation. Call
-  `display.present(frame)` each rendered frame. It reuses one image for the life of the
-  display, so presenting allocates nothing; `frame.blit(data)` is the same path if you are
-  presenting somewhere else. `rgba` still allocates and remains the export and test path.
+- `createDisplay(canvas, { fit, within, background, tolerance })`: a reusable canvas
+  presenter for animation. Call `display.present(frame)` each rendered frame. It reuses one
+  image for the life of the display, so presenting allocates nothing; `frame.blit(data)` is
+  the same path if you are presenting somewhere else. `rgba` still allocates and remains the
+  export and test path.
+  `fit` is `'fixed'` for a canvas the page sizes itself, or `'integer'` to keep the canvas at
+  the largest whole-pixel size its container allows, refitted as that container changes.
+  `'integer'` sizes the backing store in device pixels and the CSS box in CSS pixels, so one
+  canvas pixel lands on one device pixel and nothing is resampled on the way to the screen.
+  `fullscreen(on)`, `toggleFullscreen()` and `isFullscreen` take the container full-screen,
+  where the bars around the picture take `background`.
+- `fitPixels(width, height, { tolerance })`, `PIXEL`: the largest whole-pixel size of the
+  frame that fits a box. What stops a scaled picture shimmering is that every pixel is the
+  same size, not that the shape is exactly 4:3, so this searches whole pixel sizes within
+  `tolerance` of the right shape rather than insisting on multiples of 8 by 5. Insisting
+  costs a lot of screen: on a 2560 by 1440 display the nearest 8 by 5 multiple is still
+  1280 by 960 and wastes two thirds of the panel, while 11 by 7 pixels fills 1760 by 1344 at
+  a shape 1.8% off. Where no whole-pixel size is within tolerance it takes the nearest one
+  that fits and reports `exact: false`, rather than refusing and drawing something tiny.
 - `createInput({ target, onCommand })`: arrows/WASD and Space. `read()` returns `{ x, y, action }`. `press(code)` and `release(code)` support touch adapters. P and R call `onCommand('pause' | 'reset')`. `clear()` releases held input; `destroy()` removes listeners. The default target is `document`; embedded games can supply their focused element.
 - `createGamepad({ index, deadzone, buttons, axes, pads })`: a physical stick, polled on
   each `read()` because axes have no events. The digital reading matches the keyboard's, so
@@ -105,7 +120,8 @@ The cartridge initializes its own state before starting the loop. No inheritance
 
 ## Visual contract
 
-The logical frame is 160 × 192. Playfield cells occupy four horizontal clocks; 20-bit fields mirror or repeat, while 40-bit fields can be asymmetric. Sprites use eight-bit rows and either 1×, 2× or 4× horizontal stretch or two to three repeated copies. Score digits are eight-bit players like any other object. The presenter expands pixels by 8 × 5 for a chosen 4:3 image.
+The logical frame is 160 × 192. Playfield cells occupy four horizontal clocks; 20-bit fields mirror or repeat, while 40-bit fields can be asymmetric. Sprites use eight-bit rows and either 1×, 2× or 4× horizontal stretch or two to three repeated copies. Score digits are eight-bit players like any other object. The presenter expands pixels by 8 × 5 for a chosen 4:3 image, or by whatever whole pixel
+best fills the space when it is fitting a container.
 
 The palette is the full NTSC grid: 16 hues by 8 luminances, addressed as the hardware does, with bit 0 ignored so only even codes exist. Hue 0 is the grey ladder and hues 1-15 step the colourburst by roughly 26.2 degrees, which is why `$Fx` lands just past `$1x`. Values were fitted to the 25 hand-picked colours 0.1 shipped with, all of which reproduce to within one step per channel, so compositions built against 0.1 are unchanged. Luminance rises monotonically within every hue, which is what makes shading ramps usable. It remains a replaceable approximation: analog colour varied with console, television and emulator.
 

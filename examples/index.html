@@ -1,4 +1,51 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Atari engine — Examples</title><style>:root{color-scheme:dark;font:14px system-ui;color:#ddd;background:#171717}body{max-width:900px;margin:auto;padding:30px}h1{font-size:26px;font-weight:500}p{color:#aaa;line-height:1.6}nav{display:flex;gap:10px;margin:24px 0}button{background:none;color:#aaa;padding:10px 18px;border:1px solid #555;cursor:pointer}button[aria-pressed=true]{background:#ddd;color:#171717}canvas{display:block;width:min(100%,640px);aspect-ratio:4/3;image-rendering:pixelated;margin:auto}footer{margin-top:24px;color:#999;font-size:12px}a{color:#cbc5a3}</style></head><body><p>ATARI ENGINE / 0.2</p><h1>A renderer, independent of any game.</h1><p>Reference studies running from the standalone engine project.</p><nav><button data-example="arena" aria-pressed="true">Arena</button><button data-example="room" aria-pressed="false">Room</button><button data-example="invaders" aria-pressed="false">Invaders</button></nav><canvas aria-label="Arena reference study"></canvas><footer><p id="details"></p><a href="./sound.html">Sound</a> · <a href="../README.md">Engine documentation</a></footer><script type="module">
-import {arena,room,invaders} from './scenes.mjs';
-const canvas=document.querySelector('canvas'),examples={arena,room,invaders};function show(name){const f=examples[name]();f.present(canvas);canvas.setAttribute('aria-label',name+' reference study');document.querySelector('#details').textContent=`160 × 192 · 4:3 display · ${f.stats().colors} colors · No game dependencies`;for(const b of document.querySelectorAll('button'))b.setAttribute('aria-pressed',String(b.dataset.example===name));}for(const b of document.querySelectorAll('button'))b.onclick=()=>show(b.dataset.example);show('arena');
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Atari engine — Examples</title><style>
+:root{color-scheme:dark;font:14px system-ui;color:#ddd;background:#171717}
+body{max-width:900px;margin:auto;padding:30px}
+h1{font-size:26px;font-weight:500}p{color:#aaa;line-height:1.6}a{color:#cbc5a3}
+nav{display:flex;gap:10px;margin:24px 0;flex-wrap:wrap}
+button{background:none;color:#aaa;padding:10px 18px;border:1px solid #555;cursor:pointer;font:inherit}
+button:hover{border-color:#999;color:#ddd}button[aria-pressed=true]{background:#ddd;color:#171717}
+/* The stage is the box the picture is fitted into, and the bars around it in
+   fullscreen. The engine sizes the canvas itself, so no width is set here. */
+#stage{width:min(100%,640px);aspect-ratio:4/3;margin:auto;background:#000;display:grid;place-items:center}
+#stage:fullscreen{width:100%;height:100%;aspect-ratio:auto}
+canvas{display:block;image-rendering:pixelated}
+footer{margin-top:24px;color:#999;font-size:12px}
+</style></head><body>
+<p>ATARI ENGINE / 0.2</p>
+<h1>A renderer, independent of any game.</h1>
+<p>Reference studies running from the standalone engine project.</p>
+<nav>
+  <button data-example="arena" aria-pressed="true">Arena</button>
+  <button data-example="room" aria-pressed="false">Room</button>
+  <button data-example="invaders" aria-pressed="false">Invaders</button>
+  <button id="full">Fullscreen</button>
+</nav>
+<div id="stage"><canvas aria-label="Arena reference study"></canvas></div>
+<footer><p id="details"></p><p><a href="./sound.html">Sound</a> · <a href="../README.md">Engine documentation</a></p></footer>
+<script type="module">
+import {arena,room,invaders,createDisplay} from './scenes.mjs';
+const examples={arena,room,invaders};
+const canvas=document.querySelector('canvas'),stage=document.querySelector('#stage');
+// Whole pixels only, refitted whenever the stage changes size or fullscreen opens.
+const display=createDisplay(canvas,{fit:'integer',within:stage});
+let current='arena';
+function paint(){
+  const frame=examples[current]();
+  display.present(frame);
+  canvas.setAttribute('aria-label',current+' reference study');
+  const {x,y}=display.pixel,{width,height}=display.size;
+  document.querySelector('#details').textContent=
+    `160 × 192 · ${x}×${y} device pixels each · ${width}×${height} · ${frame.stats().colors} colors · No game dependencies`;
+  for(const button of document.querySelectorAll('[data-example]'))
+    button.setAttribute('aria-pressed',String(button.dataset.example===current));
+}
+for(const button of document.querySelectorAll('[data-example]'))
+  button.onclick=()=>{current=button.dataset.example;paint();};
+// The canvas is resized under us, so the picture is drawn again afterwards.
+new ResizeObserver(()=>paint()).observe(stage);
+document.querySelector('#full').onclick=()=>display.toggleFullscreen()
+  .catch(error=>{document.querySelector('#details').textContent=`Fullscreen unavailable: ${error.message}`;});
+paint();
 </script></body></html>

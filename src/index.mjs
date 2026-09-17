@@ -1,5 +1,5 @@
 export {VCSFrame, WIDTH, HEIGHT, PALETTE, TIA_BUDGET, UNLIMITED, greyscale, SCORE_FONT} from './frame.mjs';
-export {createDisplay} from './display.mjs';
+export {createDisplay,fitPixels,PIXEL} from './display.mjs';
 export {pixels,pixelText} from './pixels.mjs';
 export {createInput,combineInputs} from './input.mjs';
 export {createGamepad} from './gamepad.mjs';
