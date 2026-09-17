@@ -1,0 +1,97 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Atari engine — Sound</title><style>
+:root{color-scheme:dark;font:14px system-ui;color:#ddd;background:#171717}
+body{max-width:900px;margin:auto;padding:30px}h1{font-size:26px;font-weight:500}
+p{color:#aaa;line-height:1.6}a{color:#cbc5a3}
+button{background:none;color:#aaa;padding:9px 16px;border:1px solid #555;cursor:pointer;font:inherit}
+button:hover:not(:disabled){border-color:#999;color:#ddd}button:disabled{opacity:.4;cursor:default}
+select{background:#222;color:#ddd;border:1px solid #555;padding:6px;font:inherit}
+fieldset{border:1px solid #333;padding:16px 20px;margin:18px 0}legend{color:#cbc5a3;padding:0 8px}
+.row{display:grid;grid-template-columns:90px 1fr 70px;align-items:center;gap:12px;margin:10px 0}
+.row label{color:#999}input[type=range]{width:100%;accent-color:#cbc5a3}
+output{font-variant-numeric:tabular-nums;color:#ddd}
+#pitch{color:#999;font-variant-numeric:tabular-nums;margin-top:10px;min-height:1.5em}
+nav{display:flex;gap:10px;margin:24px 0;flex-wrap:wrap}
+footer{margin-top:28px;color:#999;font-size:12px}
+</style></head><body>
+<p>ATARI ENGINE / SOUND</p>
+<h1>Two channels, four bits of volume.</h1>
+<p>The TIA divides a 31.4 kHz clock by AUDF+1. That divider is coarse enough that the
+console cannot play in tune, so the readout below reports how far each note actually
+lands from the pitch you asked for. Nothing here corrects it.</p>
+<p><button id="start">Enable audio</button> <span id="state">suspended</span></p>
+<div id="panel" hidden>
+<nav>
+  <button data-fx="laser">Laser</button><button data-fx="explosion">Explosion</button>
+  <button data-fx="engine">Engine</button><button data-fx="melody">Melody</button>
+  <button data-fx="stop">Silence</button>
+</nav>
+<div id="channels"></div>
+</div>
+<footer><p><a href="./">Reference studies</a> · <a href="../README.md">Engine documentation</a></p></footer>
+<script type="module">
+import {createSound,AUDC,AUDIO_CLOCK,TONES,pitch} from '../src/index.mjs';
+const NAMES=Object.entries(AUDC);
+let sound=null,running=null;
+const el=(tag,props={})=>Object.assign(document.createElement(tag),props);
+
+function strip(channel){
+  const box=el('fieldset');box.append(el('legend',{textContent:`Channel ${channel}`}));
+  const select=el('select');
+  for(const [name,value] of NAMES)select.append(el('option',{value,textContent:`${name} — AUDC ${value}`}));
+  select.value=channel?AUDC.bass:AUDC.tone;
+  const freq=el('input',{type:'range',min:0,max:31,value:12});
+  const vol=el('input',{type:'range',min:0,max:15,value:channel?0:8});
+  const freqOut=el('output'),volOut=el('output'),info=el('div',{id:'pitch'});
+  const row=(label,control,out)=>{const r=el('div',{className:'row'});r.append(el('label',{textContent:label}),control,out);return r;};
+  box.append(row('AUDC',select,el('output')),row('AUDF',freq,freqOut),row('AUDV',vol,volOut),info);
+  function apply(){
+    const control=Number(select.value),frequency=Number(freq.value),volume=Number(vol.value);
+    freqOut.textContent=frequency;volOut.textContent=volume;
+    const period=TONES[control];
+    info.textContent=period
+      ? `${(AUDIO_CLOCK/((frequency+1)*period)).toFixed(1)} Hz — nearest A440 is AUDF ${pitch(control,440).frequency} at ${pitch(control,440).cents} cents`
+      : 'Noise: this setting has no pitch.';
+    sound?.set(channel,{control,frequency,volume});
+  }
+  for(const control of [select,freq,vol])control.oninput=apply;
+  box.apply=apply;return box;
+}
+const strips=[strip(0),strip(1)];
+document.querySelector('#channels').append(...strips);
+
+// Effects are written one register at a time, once per frame, the way a cartridge
+// would during vertical blank. Nothing here schedules ahead of the game loop.
+const EFFECTS={
+  laser:{control:AUDC.tone,frames:18,at:i=>({frequency:2+i,volume:Math.max(0,12-i)})},
+  explosion:{control:AUDC.noise,frames:34,at:i=>({frequency:Math.min(31,3+i),volume:Math.max(0,14-Math.floor(i/2.4))})},
+  engine:{control:AUDC.rumble,frames:150,at:i=>({frequency:14+(i%3),volume:9})},
+  melody:{control:AUDC.bass,frames:112,at(i){
+    const song=[440,494,523,587,523,494,440,392],note=song[Math.floor(i/14)%song.length];
+    return {frequency:pitch(AUDC.bass,note).frequency,volume:i%14<11?10:0};}},
+};
+function run(name){
+  clearInterval(running);
+  if(name==='stop'){sound.silence();return;}
+  const fx=EFFECTS[name];let frame=0;
+  sound.set(0,{control:fx.control,...fx.at(0)});
+  running=setInterval(()=>{
+    if(++frame>=fx.frames){clearInterval(running);sound.off(0);strips[0].apply();return;}
+    sound.set(0,{control:fx.control,...fx.at(frame)});
+  },1000/60);
+}
+document.querySelector('#start').onclick=async event=>{
+  event.target.disabled=true;
+  try{
+    sound=await createSound();
+    await sound.resume();
+    document.querySelector('#state').textContent=`running at ${sound.context.sampleRate} Hz`;
+    document.querySelector('#panel').hidden=false;
+    for(const s of strips)s.apply();
+    for(const b of document.querySelectorAll('[data-fx]'))b.onclick=()=>run(b.dataset.fx);
+  }catch(error){
+    document.querySelector('#state').textContent=`unavailable: ${error.message}`;
+    event.target.disabled=false;
+  }
+};
+</script></body></html>

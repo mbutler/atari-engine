@@ -1,10 +1,13 @@
 // Pure clock is independently testable; games own state and all update rules.
-export function createClock({hz=120,maxElapsed=.05}={}){
+// 60 Hz matches a cartridge, which runs its logic once per frame during vertical
+// blank and moves objects whole pixels. Simulating faster reintroduces sub-pixel
+// motion, which is the single clearest tell that something is not a 2600 game.
+export function createClock({hz=60,maxElapsed=.05}={}){
  if(!Number.isFinite(hz)||hz<=0||!Number.isFinite(maxElapsed)||maxElapsed<=0)throw new RangeError('Positive finite clock settings required');
  let accumulator=0;const dt=1/hz;
  return {advance(elapsed,update){accumulator+=Math.min(maxElapsed,Math.max(0,Number.isFinite(elapsed)?elapsed:0));let count=0;while(accumulator+1e-12>=dt){update(dt);accumulator=Math.max(0,accumulator-dt);count++;}return count;},reset(){accumulator=0;}};
 }
-export function createLoop({input,update,render,onPause=()=>{},hz=120,maxElapsed=.05}){
+export function createLoop({input,update,render,onPause=()=>{},hz=60,maxElapsed=.05}){
  const clock=createClock({hz,maxElapsed});let paused=false,running=false,last=null,request=null;
  const setPaused=value=>{paused=!!value;clock.reset();last=null;if(paused)input.clear();onPause(paused);};
  const blur=()=>setPaused(true),visibility=()=>{if(document.hidden)blur();};
