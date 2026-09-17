@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {VCSFrame,PALETTE,TIA_BUDGET,UNLIMITED,greyscale} from '../src/index.mjs';
+import {VCSFrame,PALETTE,TIA_BUDGET,UNLIMITED,greyscale,SCORE_FONT} from '../src/index.mjs';
 test('playfield cells are four pixels wide and reflect at the midpoint',()=>{const f=new VCSFrame().clear();f.playfield('01000000000000000000',{y:10,height:2,color:0x0e});assert.deepEqual([...f.pixels.slice(1600,1760)].flatMap((v,i)=>v?[i]:[]),[4,5,6,7,152,153,154,155]);assert.equal(f.pixels[12*160+4],0);});
 test('repeat uses original order and asymmetric accepts independent halves',()=>{const f=new VCSFrame().clear();f.playfield('01000000000000000000',{mode:'repeat',height:1});assert.equal(f.pixels[84],0x0e);assert.equal(f.pixels[152],0);f.clear().playfield('1'.padEnd(40,'0'),{mode:'asymmetric',height:1});assert.equal(f.pixels[0],0x0e);assert.equal(f.pixels[159],0);});
 test('sprites reflect bits, stretch horizontally and change color by row',()=>{const f=new VCSFrame().clear();f.sprite([128,1],{x:10,y:10,reflect:true,stretch:2,lineHeight:3,colors:[0x46,0x96]});assert.equal(f.pixels[10*160+24],0x46);assert.equal(f.pixels[12*160+25],0x46);assert.equal(f.pixels[13*160+10],0x96);assert.equal(f.pixels[13*160+24],0);});
@@ -165,4 +165,20 @@ test('greyscale keeps the luminance and drops the hue, as the color switch does'
   const [r,g,b]=[1,3,5].map(i=>parseInt(PALETTE[grey].slice(i,i+2),16));
   assert.ok(r===g&&g===b,`$${grey.toString(16)} is not neutral`);
  }
+});
+test('the score font is eight-pixel player graphics and can be replaced',()=>{
+ assert.equal(SCORE_FONT.length,10);
+ for(const glyph of SCORE_FONT){
+  assert.equal(glyph.length,8,'each digit is eight rows');
+  assert.ok(glyph.every(row=>Number.isInteger(row)&&row>=0&&row<=255),'each row is an 8-bit player');
+ }
+ // Every digit distinct: easy to get wrong when a font is drawn by hand.
+ assert.equal(new Set(SCORE_FONT.map(glyph=>glyph.join(','))).size,10);
+ const f=new VCSFrame().clear().number(8,{x:0,y:0,digits:1,scaleX:1,scaleY:1});
+ assert.equal(f.pixels[0],0,'the glyph carries its own side bearing');
+ assert.equal(f.pixels[2],0x0e);
+ // Ten glyphs of any shape will do.
+ const slab=Array.from({length:10},()=>[255]);
+ assert.equal(new VCSFrame().clear().number(7,{digits:1,font:slab,scaleX:1,scaleY:1}).pixels[0],0x0e);
+ assert.throws(()=>new VCSFrame().number(1,{font:[[255]]}),/ten digits/);
 });

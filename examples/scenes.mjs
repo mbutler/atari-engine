@@ -77,7 +77,7 @@ export const sprites={
  `),
 };
 const full='11111111111111111111',edge='10000000000000000000';
-export function arena(){const f=new VCSFrame().clear(0x1c);f.number(1,{x:39,y:5,color:0x56,digits:1,scaleX:3,scaleY:3});f.number(0,{x:113,y:5,color:0x76,digits:1,scaleX:3,scaleY:3});f.playfield(full,{y:25,height:7,color:0x4c});f.playfield(edge,{y:32,height:152,color:0x4c});f.playfield(full,{y:184,height:8,color:0x4c});f.playfield('10000000111000000000',{y:62,height:9,color:0x4c});f.playfield('10000000100000000000',{y:71,height:31,color:0x4c});f.playfield('10000000000000011111',{y:135,height:8,color:0x4c});f.sprite(sprites.tank,{x:18,y:112,color:0x76});f.sprite(sprites.tank,{x:111,y:93,color:0x56,reflect:true});f.missile(44,118,{width:2,height:3,color:0x76});return f;}
+export function arena(){const f=new VCSFrame().clear(0x1c);f.number(1,{x:39,y:5,color:0x56,digits:1,scaleX:1,scaleY:2});f.number(0,{x:113,y:5,color:0x76,digits:1,scaleX:1,scaleY:2});f.playfield(full,{y:25,height:7,color:0x4c});f.playfield(edge,{y:32,height:152,color:0x4c});f.playfield(full,{y:184,height:8,color:0x4c});f.playfield('10000000111000000000',{y:62,height:9,color:0x4c});f.playfield('10000000100000000000',{y:71,height:31,color:0x4c});f.playfield('10000000000000011111',{y:135,height:8,color:0x4c});f.sprite(sprites.tank,{x:18,y:112,color:0x76});f.sprite(sprites.tank,{x:111,y:93,color:0x56,reflect:true});f.missile(44,118,{width:2,height:3,color:0x76});return f;}
 export function room(){const f=new VCSFrame().clear(0x0a);f.playfield('11111111111111110000',{y:0,height:16,color:0x16});f.playfield(full,{y:176,height:16,color:0x16});f.playfield('10000000000000000000',{y:16,height:56,color:0x16});f.playfield('10000000000000000000',{y:120,height:56,color:0x16});f.missile(62,115,{width:4,height:8,color:0x16});f.sprite(sprites.key,{x:69,y:112,color:0x1c});f.sprite(sprites.beast,{x:107,y:56,color:0x1c});return f;}
 // Exercises the 0.2 primitives. Each row is six abreast from two registers:
 // three copies apiece at 32 clocks, interleaved 16 apart, so the pitch is even and
@@ -87,7 +87,7 @@ export function room(){const f=new VCSFrame().clear(0x0a);f.playfield('111111111
 export function invaders(){
  const f=new VCSFrame();
  f.scanlines(0,HEIGHT,line=>0x90+(Math.min(4,Math.floor(line*5/HEIGHT))<<1));
- f.number(1240,{x:8,y:8,digits:4,color:0x0e,scaleX:2,scaleY:3});
+ f.number(1240,{x:8,y:8,digits:4,color:0x0e,scaleX:1,scaleY:2});
  for(const [y,art,color] of [[40,sprites.spire,0x5a],[60,sprites.drone,0xac],[80,sprites.husk,0x1c],[100,sprites.drone,0xbc]]){
   f.sprite(art,{x:36,y,color,copies:3,spacing:32});
   f.sprite(art,{x:52,y,color,copies:3,spacing:32});

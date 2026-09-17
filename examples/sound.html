@@ -30,9 +30,9 @@ lands from the pitch you asked for. Nothing here corrects it.</p>
 </div>
 <footer><p><a href="./">Reference studies</a> · <a href="../README.md">Engine documentation</a></p></footer>
 <script type="module">
-import {createSound,AUDC,AUDIO_CLOCK,TONES,pitch} from '../src/index.mjs';
+import {createSound,createVoices,AUDC,AUDIO_CLOCK,TONES,pitch} from '../src/index.mjs';
 const NAMES=Object.entries(AUDC);
-let sound=null,running=null;
+let sound=null,voices=null,running=null;
 const el=(tag,props={})=>Object.assign(document.createElement(tag),props);
 
 function strip(channel){
@@ -60,30 +60,28 @@ function strip(channel){
 const strips=[strip(0),strip(1)];
 document.querySelector('#channels').append(...strips);
 
-// Effects are written one register at a time, once per frame, the way a cartridge
-// would during vertical blank. Nothing here schedules ahead of the game loop.
+// Effects are composed from the primitives and stepped once a frame, the way a
+// cartridge writes its audio registers during vertical blank. createVoices owns the
+// stepping and the channel; the shapes below are the cartridge's own.
 const EFFECTS={
   laser:{control:AUDC.tone,frames:18,at:i=>({frequency:2+i,volume:Math.max(0,12-i)})},
-  explosion:{control:AUDC.noise,frames:34,at:i=>({frequency:Math.min(31,3+i),volume:Math.max(0,14-Math.floor(i/2.4))})},
-  engine:{control:AUDC.rumble,frames:150,at:i=>({frequency:14+(i%3),volume:9})},
+  explosion:{control:AUDC.noise,frames:34,priority:2,at:i=>({frequency:Math.min(31,3+i),volume:Math.max(0,14-Math.floor(i/2.4))})},
+  engine:{control:AUDC.rumble,frames:3,loop:true,at:i=>({frequency:14+i,volume:9})},
   melody:{control:AUDC.bass,frames:112,at(i){
     const song=[440,494,523,587,523,494,440,392],note=song[Math.floor(i/14)%song.length];
     return {frequency:pitch(AUDC.bass,note).frequency,volume:i%14<11?10:0};}},
 };
+// The engine loop a cartridge would run: one step per frame, nothing else.
 function run(name){
-  clearInterval(running);
-  if(name==='stop'){sound.silence();return;}
-  const fx=EFFECTS[name];let frame=0;
-  sound.set(0,{control:fx.control,...fx.at(0)});
-  running=setInterval(()=>{
-    if(++frame>=fx.frames){clearInterval(running);sound.off(0);strips[0].apply();return;}
-    sound.set(0,{control:fx.control,...fx.at(frame)});
-  },1000/60);
+  if(name==='stop'){voices.silence();for(const s of strips)s.apply();return;}
+  voices.play(EFFECTS[name]);
+  if(!running)running=setInterval(()=>voices.step(),1000/60);
 }
 document.querySelector('#start').onclick=async event=>{
   event.target.disabled=true;
   try{
     sound=await createSound();
+    voices=createVoices(sound,{channels:[0]});
     await sound.resume();
     document.querySelector('#state').textContent=`running at ${sound.context.sampleRate} Hz`;
     document.querySelector('#panel').hidden=false;

@@ -1,4 +1,5 @@
 // A visual grammar, not a cycle-accurate TIA emulator.
+import {pixels} from './pixels.mjs';
 export const WIDTH=160, HEIGHT=192;
 // The full 16 hue by 8 luminance NTSC grid. Hue 0 is the grey ladder; hues 1-15
 // step the colorburst by roughly 26.2 degrees, so $Fx lands just past $1x the way
@@ -47,7 +48,90 @@ function charge(frame,kind,y,height){
   if(count>limit)throw new RangeError(`Scanline ${line} would need ${count} ${BUDGETED[kind]}, but the budget allows ${limit}. Move the object to another scanline, or raise frame.budget.`);
  }
 }
-const DIGITS=[['111','101','101','101','111'],['010','110','010','010','111'],['111','001','111','100','111'],['111','001','111','001','111'],['101','101','111','001','001'],['111','100','111','001','111'],['111','100','111','101','111'],['111','001','001','001','001'],['111','101','111','101','111'],['111','101','111','001','111']];
+// Score digits are player graphics on real hardware, so they are eight pixels wide
+// with thick strokes rather than a thin grid. Replace this with any ten 8-bit glyphs.
+export const SCORE_FONT=Object.freeze([
+ pixels(`..####..
+         .##..##.
+         .##..##.
+         .##..##.
+         .##..##.
+         .##..##.
+         .##..##.
+         ..####..`),
+ pixels(`...##...
+         ..###...
+         .####...
+         ...##...
+         ...##...
+         ...##...
+         ...##...
+         .######.`),
+ pixels(`..####..
+         .##..##.
+         .....##.
+         ....##..
+         ...##...
+         ..##....
+         .##.....
+         .######.`),
+ pixels(`..####..
+         .##..##.
+         .....##.
+         ...###..
+         .....##.
+         .....##.
+         .##..##.
+         ..####..`),
+ pixels(`....##..
+         ...###..
+         ..####..
+         .##.##..
+         .######.
+         ....##..
+         ....##..
+         ....##..`),
+ pixels(`.######.
+         .##.....
+         .##.....
+         .#####..
+         .....##.
+         .....##.
+         .##..##.
+         ..####..`),
+ pixels(`..####..
+         .##..##.
+         .##.....
+         .#####..
+         .##..##.
+         .##..##.
+         .##..##.
+         ..####..`),
+ pixels(`.######.
+         .....##.
+         ....##..
+         ....##..
+         ...##...
+         ...##...
+         ..##....
+         ..##....`),
+ pixels(`..####..
+         .##..##.
+         .##..##.
+         ..####..
+         .##..##.
+         .##..##.
+         .##..##.
+         ..####..`),
+ pixels(`..####..
+         .##..##.
+         .##..##.
+         .##..##.
+         ..#####.
+         .....##.
+         .##..##.
+         ..####..`),
+]);
 export class VCSFrame {
  constructor(palette=PALETTE,{budget=TIA_BUDGET}={}){this.palette=palette;this.budget=budget;this.pixels=new Uint8Array(WIDTH*HEIGHT);this.commands=[];this.occupancy=null;this.slots=[];this.touches=new Set();this.drawing=null;}
  // Collision is latched while drawing and read afterwards, the way a cartridge reads
@@ -133,9 +217,13 @@ export class VCSFrame {
   this.commands.push({kind:'sprite',x,y,width:(copies-1)*spacing+8*stretch,height,copies,spacing:copies>1?spacing:0});return this;
  }
  missile(x,y,{width=1,height=2,color=0x0e,id=null}={}){if(![1,2,4,8].includes(width))throw new RangeError('Missile width must be 1, 2, 4 or 8');charge(this,'missile',y,height);this.paint(id,()=>this.rect(x,y,width,height,color));this.commands.push({kind:'missile',x,y,width,height});return this;}
- number(value,{x=0,y=0,color=0x0e,digits=2,scaleX=2,scaleY=3,gap=2}={}){
+ number(value,{x=0,y=0,color=0x0e,digits=2,scaleX=1,scaleY=2,gap=2,font=SCORE_FONT}={}){
   integer(value,'value');if(value<0)throw new RangeError('Score cannot be negative');scale(scaleX,'scaleX');scale(scaleY,'scaleY');scale(digits,'digits');
-  const str=String(value).padStart(digits,'0').slice(-digits);[...str].forEach((digit,i)=>DIGITS[Number(digit)].forEach((row,iy)=>[...row].forEach((bit,ix)=>{if(bit==='1')this.rect(x+i*(3*scaleX+gap)+ix*scaleX,y+iy*scaleY,scaleX,scaleY,color);})));return this;
+  if(!Array.isArray(font)||font.length!==10)throw new RangeError('A score font needs ten digits');
+  const text=String(value).padStart(digits,'0').slice(-digits);
+  [...text].forEach((digit,i)=>{const glyph=font[Number(digit)],left=x+i*(8*scaleX+gap);
+   glyph.forEach((row,iy)=>{for(let bit=0;bit<8;bit++)if(row&(1<<(7-bit)))this.rect(left+bit*scaleX,y+iy*scaleY,scaleX,scaleY,color);});});
+  return this;
  }
  // Palette lookups are cached per palette object: this runs on every rendered frame.
  lut(){

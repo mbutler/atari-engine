@@ -64,6 +64,15 @@ Import from `src/index.mjs`:
   display, so presenting allocates nothing; `frame.blit(data)` is the same path if you are
   presenting somewhere else. `rgba` still allocates and remains the export and test path.
 - `createInput({ target, onCommand })`: arrows/WASD and Space. `read()` returns `{ x, y, action }`. `press(code)` and `release(code)` support touch adapters. P and R call `onCommand('pause' | 'reset')`. `clear()` releases held input; `destroy()` removes listeners. The default target is `document`; embedded games can supply their focused element.
+- `createGamepad({ index, deadzone, buttons, axes, pads })`: a physical stick, polled on
+  each `read()` because axes have no events. The digital reading matches the keyboard's, so
+  a cartridge cannot tell them apart, and the d-pad wins whenever it speaks. `analog` carries
+  the raw stick past the deadzone, which is the nearest thing to a paddle most people still
+  own: integrate `analog.x` over time rather than treating it as an absolute position, since
+  a stick springs back to centre and would otherwise snap the bat to the middle on release.
+  `pads` names the source of connected pads, so this runs without a browser.
+- `combineInputs(...sources)`: reads several controls as one. The first source with a
+  direction wins and any of them can fire, so a keyboard and a stick are interchangeable.
 - `createConsole({ target, keys, onSwitch })`: the machine's front panel, which is not the
   controller. `read()` returns `{ select, reset, color, difficulty: { left, right } }`.
   Select and Reset are momentary and latch a tap the way the action button does, so a press
@@ -75,17 +84,28 @@ Import from `src/index.mjs`:
   change. Defaults sit on `Digit1` to `Digit5`, one row of keys for one row of switches, and
   `keys` remaps them. Cycling numbered variations with Select is core 2600 UX: Combat ships
   27 of them and Space Invaders 112, so a faithful clone needs this.
+- `SCORE_FONT`: ten digits as eight-pixel player graphics, which is what a score is made of
+  on real hardware, so the strokes are thick rather than a thin grid. Pass `font` to `number`
+  to replace it with any ten 8-bit glyphs.
 - `greyscale(code)`: what the colour switch does to a colour, hue 0 at the same luminance.
   Map a palette through it and assign the result to `frame.palette` to render in black and
   white.
 - `createLoop({ input, update, render, onPause, hz, maxElapsed })`: start with `loop.start()`. `update(input, dt)` advances cartridge state; `render()` draws it. The default is 60 simulation steps per second, with at most 50 ms of catchup. 60 Hz is deliberate: a cartridge runs its logic once per frame during vertical blank and moves objects whole pixels, and simulating faster reintroduces the sub-pixel motion that reads as modern rather than as a 2600. Supports `setPaused`, `togglePause`, `resetClock`, and `destroy`. Hiding the tab or blurring the window pauses it; resuming is explicit.
 - `createClock`: browser-independent fixed-step accumulator used by the runtime and tests.
+- `createVoices(sound, { channels })`: composes effects out of the sound primitives.
+  `play(effect)` takes a channel and returns which, or null when a louder claim keeps it;
+  `step()` advances every sounding channel by one frame and belongs in the game loop beside
+  `update()`, because a cartridge writes its audio registers once a frame during vertical
+  blank. An effect is a list of per-frame writes, or `{ control, frames, at(frame), loop,
+  priority }` — sweeps and decays read better as a function, short fixed blips as a list.
+  Priority stops a footstep cutting off an explosion when both channels are busy. The effects
+  themselves stay with the cartridge; `examples/sound.html` has four to read.
 
 The cartridge initializes its own state before starting the loop. No inheritance, entity hierarchy or global engine singleton is required. Dispose both input and loop when unmounting a cartridge. With the default input target, run one active cartridge per document.
 
 ## Visual contract
 
-The logical frame is 160 × 192. Playfield cells occupy four horizontal clocks; 20-bit fields mirror or repeat, while 40-bit fields can be asymmetric. Sprites use eight-bit rows and either 1×, 2× or 4× horizontal stretch or two to three repeated copies. Bitmap numbers use the same indexed raster. The presenter expands pixels by 8 × 5 for a chosen 4:3 image.
+The logical frame is 160 × 192. Playfield cells occupy four horizontal clocks; 20-bit fields mirror or repeat, while 40-bit fields can be asymmetric. Sprites use eight-bit rows and either 1×, 2× or 4× horizontal stretch or two to three repeated copies. Score digits are eight-bit players like any other object. The presenter expands pixels by 8 × 5 for a chosen 4:3 image.
 
 The palette is the full NTSC grid: 16 hues by 8 luminances, addressed as the hardware does, with bit 0 ignored so only even codes exist. Hue 0 is the grey ladder and hues 1-15 step the colourburst by roughly 26.2 degrees, which is why `$Fx` lands just past `$1x`. Values were fitted to the 25 hand-picked colours 0.1 shipped with, all of which reproduce to within one step per channel, so compositions built against 0.1 are unchanged. Luminance rises monotonically within every hue, which is what makes shading ramps usable. It remains a replaceable approximation: analog colour varied with console, television and emulator.
 
