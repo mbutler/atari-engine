@@ -1,0 +1,77 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Atari engine — Cartridge</title><style>
+:root{color-scheme:dark;font:14px system-ui;color:#ddd;background:#171717}
+body{max-width:900px;margin:auto;padding:30px}
+h1{font-size:26px;font-weight:500}p{color:#aaa;line-height:1.6}a{color:#cbc5a3}
+nav{display:flex;gap:10px;margin:20px 0;flex-wrap:wrap}
+button{background:none;color:#aaa;padding:10px 18px;border:1px solid #555;cursor:pointer;font:inherit}
+button:hover:not(:disabled){border-color:#999;color:#ddd}button:disabled{opacity:.4;cursor:default}
+#stage{width:min(100%,640px);aspect-ratio:4/3;margin:auto;background:#000;display:grid;place-items:center;position:relative}
+#stage:fullscreen{width:100%;height:100%;aspect-ratio:auto}
+canvas{display:block;image-rendering:pixelated}
+#paused{position:absolute;inset:0;display:none;place-items:center;background:#000a;color:#ddd;letter-spacing:.2em}
+#stage.paused #paused{display:grid}
+table{border-collapse:collapse;margin:18px 0;font-size:13px}
+td{padding:4px 14px 4px 0;color:#aaa}td:first-child{color:#cbc5a3;white-space:nowrap}
+footer{margin-top:24px;color:#999;font-size:12px}
+</style></head><body>
+<p>ATARI ENGINE / REFERENCE CARTRIDGE</p>
+<h1>Catch.</h1>
+<p>A deliberately dull game. It exists to show how a cartridge wires to the engine and to
+hold itself to 1982 scope: one verb, one screen, four variations, and every byte of its
+state in the 128 the console would have had. Read <a href="./cartridge.mjs">cartridge.mjs</a>
+beside it.</p>
+<nav><button id="sound">Enable sound</button><button id="full">Fullscreen</button></nav>
+<div id="stage"><canvas aria-label="Catch, a reference cartridge"></canvas><div id="paused">PAUSED</div></div>
+<table>
+  <tr><td>Move</td><td>Arrows, WASD, or a gamepad stick</td></tr>
+  <tr><td>Start</td><td>Space, or the Reset switch</td></tr>
+  <tr><td>Console</td><td>1 Select (cycles variation) · 2 Reset · 3 Colour · 4 and 5 Difficulty</td></tr>
+  <tr><td>Pause</td><td>P — and the game pauses itself when the window loses focus</td></tr>
+</table>
+<footer><p id="state"></p><p><a href="./">Reference studies</a> · <a href="./sound.html">Sound</a> · <a href="../README.md">Engine documentation</a></p></footer>
+<script type="module">
+import {createDisplay,createInput,createGamepad,combineInputs,createConsole,createLoop,
+        createSound,createVoices,greyscale,PALETTE} from '../src/index.mjs';
+import {catcher,RAM,RAM_USED} from './cartridge.mjs';
+
+const canvas=document.querySelector('canvas'),stage=document.querySelector('#stage');
+const display=createDisplay(canvas,{fit:'integer',within:stage});
+// A keyboard and a stick read as one control, so the cartridge cannot tell them apart.
+const keys=createInput({target:document}),input=combineInputs(keys,createGamepad());
+const panel=createConsole({target:document});
+// Sound needs a user gesture, so the cartridge is handed a stand-in that stays quiet
+// until there is something behind it.
+let voices=null;
+const cart=catcher({voices:{play:effect=>voices&&voices.play(effect)}});
+// The colour switch is the palette, mapped through the grey ladder.
+const GREY=Object.freeze(Object.fromEntries(Object.keys(PALETTE).map(code=>[code,PALETTE[greyscale(Number(code))]])));
+
+const loop=createLoop({
+  input,
+  // One fixed 60 Hz step: the cartridge advances, then its sound does.
+  update:read=>{cart.update(read,panel.read());if(voices)voices.step();},
+  render:()=>{
+    const frame=cart.render();
+    frame.palette=panel.read().color?PALETTE:GREY;
+    display.present(frame);
+    report();
+  },
+  onPause:paused=>{stage.classList.toggle('paused',paused);if(paused&&voices)voices.silence();},
+});
+// P pauses; the loop also pauses itself when the tab is hidden or the window blurs.
+document.addEventListener('keydown',event=>{if(event.code==='KeyP')loop.togglePause();});
+function report(){
+  document.querySelector('#state').textContent=
+    `score ${cart.score} · lives ${cart.ram[RAM.lives]} · variation ${cart.ram[RAM.variation]+1} of 4 · `+
+    `${RAM_USED} of 128 bytes of state · ${display.pixel.x}×${display.pixel.y} device pixels each`;
+}
+document.querySelector('#sound').onclick=async event=>{
+  event.target.disabled=true;
+  try{voices=createVoices(await createSound().then(s=>(s.resume(),s)));event.target.textContent='Sound on';}
+  catch(error){event.target.textContent=`Sound unavailable: ${error.message}`;}
+};
+document.querySelector('#full').onclick=()=>display.toggleFullscreen().catch(()=>{});
+new ResizeObserver(()=>report()).observe(stage);
+loop.start();
+</script></body></html>

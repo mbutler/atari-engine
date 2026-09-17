@@ -11,7 +11,7 @@ npm test
 npm start
 ```
 
-Open http://127.0.0.1:8043/ for the Arena and Room examples, and `/examples/sound.html` for the tone lab. No install or build step is required. `PORT` changes the local server port. This directory can be copied elsewhere without any game project; it contains no imports from Cargo. Node 20 or later is needed for the example server and tests. The engine itself runs as browser ES modules.
+Open http://127.0.0.1:8043/ for the Arena, Room and Invaders studies, `/examples/cartridge.html` for a playable reference cartridge, and `/examples/sound.html` for the tone lab. No install or build step is required. `PORT` changes the local server port. This directory can be copied elsewhere without any game project; it contains no imports from Cargo. Node 20 or later is needed for the example server and tests. The engine itself runs as browser ES modules.
 
 ## Ownership
 
@@ -159,6 +159,15 @@ decides which harmonic dominates and is worth checking against a reference recor
 Next: a small paddle cartridge to exercise input, graphics and audio together without
 sharing Cargo's physics,. New abstractions should be earned by actual
 examples. No package publishing, editor or asset pipeline is planned yet.
+
+## Writing a cartridge
+
+The engine holds the picture, sound, timing and controls to 1982; it cannot hold the game
+to 1982, and that is where the feeling comes from. [CARTRIDGE.md](CARTRIDGE.md) is the
+scope discipline a cartridge should keep: the per-scanline object budget, 128 bytes of
+state, one verb, whole-pixel motion, variations instead of levels, and what belongs to the
+console rather than the game. `examples/cartridge.mjs` is a working reference — a dull
+game on purpose, whose job is to show the wiring and to prove the engine's own claims.
 
 ## Working with Impossible Cartridge
 
