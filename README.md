@@ -19,7 +19,7 @@ Open http://127.0.0.1:8043/ for the Arena and Room examples, and `/examples/soun
 | --- | --- |
 | Palette framebuffer and drawing primitives | Maps and sprite artwork |
 | Display scaling and pixel-exact collision detection | Movement and collision rules |
-| Keyboard input, plus programmatic touch input | Meaning of the action button |
+| Keyboard input, console switches, plus programmatic touch input | Meaning of the action button and of each game variation |
 | Fixed-step timing and pause on blur | Entities, objectives, scoring and persistence |
 | TIA sound primitives and the object budget | Game-specific sound effects and music |
 
@@ -51,8 +51,25 @@ Import from `src/index.mjs`:
   collides. A frame tracks up to 32 ids; the hardware has six, so staying near that keeps a
   game honest.
 - `TIA_BUDGET`, `UNLIMITED`: the per-scanline object budget, `{sprites: 2, missiles: 3}` by default, matching two players plus two missiles and a ball. Drawing past it throws and names the scanline. Copies cost one player however many they paint, so two registers legitimately fill a scanline with six objects. Reusing an object further down the screen is free too, which is how real games draw more than two things. Pass `new VCSFrame(PALETTE, {budget})` to raise it, use `UNLIMITED` to lift it, or `null` to switch the check off. A rejected draw leaves the frame untouched.
-- `createDisplay(canvas)`: a reusable canvas presenter for animation. Call `display.present(frame)` each rendered frame.
+- `createDisplay(canvas)`: a reusable canvas presenter for animation. Call
+  `display.present(frame)` each rendered frame. It reuses one image for the life of the
+  display, so presenting allocates nothing; `frame.blit(data)` is the same path if you are
+  presenting somewhere else. `rgba` still allocates and remains the export and test path.
 - `createInput({ target, onCommand })`: arrows/WASD and Space. `read()` returns `{ x, y, action }`. `press(code)` and `release(code)` support touch adapters. P and R call `onCommand('pause' | 'reset')`. `clear()` releases held input; `destroy()` removes listeners. The default target is `document`; embedded games can supply their focused element.
+- `createConsole({ target, keys, onSwitch })`: the machine's front panel, which is not the
+  controller. `read()` returns `{ select, reset, color, difficulty: { left, right } }`.
+  Select and Reset are momentary and latch a tap the way the action button does, so a press
+  between two reads is never missed; held down they keep reading true, which is how a real
+  console runs through variations, and a game wanting one step per press debounces it
+  itself. Colour and the two difficulty switches are toggles that flip once per press rather
+  than per key repeat. `set({ color, left, right })` flips them from a host's own interface,
+  `press`/`release` drive it from a touch adapter, and `onSwitch(name, value)` reports every
+  change. Defaults sit on `Digit1` to `Digit5`, one row of keys for one row of switches, and
+  `keys` remaps them. Cycling numbered variations with Select is core 2600 UX: Combat ships
+  27 of them and Space Invaders 112, so a faithful clone needs this.
+- `greyscale(code)`: what the colour switch does to a colour, hue 0 at the same luminance.
+  Map a palette through it and assign the result to `frame.palette` to render in black and
+  white.
 - `createLoop({ input, update, render, onPause, hz, maxElapsed })`: start with `loop.start()`. `update(input, dt)` advances cartridge state; `render()` draws it. The default is 60 simulation steps per second, with at most 50 ms of catchup. 60 Hz is deliberate: a cartridge runs its logic once per frame during vertical blank and moves objects whole pixels, and simulating faster reintroduces the sub-pixel motion that reads as modern rather than as a 2600. Supports `setPaused`, `togglePause`, `resetClock`, and `destroy`. Hiding the tab or blurring the window pauses it; resuming is explicit.
 - `createClock`: browser-independent fixed-step accumulator used by the runtime and tests.
 

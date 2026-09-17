@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {VCSFrame,PALETTE,TIA_BUDGET,UNLIMITED} from '../src/index.mjs';
+import {VCSFrame,PALETTE,TIA_BUDGET,UNLIMITED,greyscale} from '../src/index.mjs';
 test('playfield cells are four pixels wide and reflect at the midpoint',()=>{const f=new VCSFrame().clear();f.playfield('01000000000000000000',{y:10,height:2,color:0x0e});assert.deepEqual([...f.pixels.slice(1600,1760)].flatMap((v,i)=>v?[i]:[]),[4,5,6,7,152,153,154,155]);assert.equal(f.pixels[12*160+4],0);});
 test('repeat uses original order and asymmetric accepts independent halves',()=>{const f=new VCSFrame().clear();f.playfield('01000000000000000000',{mode:'repeat',height:1});assert.equal(f.pixels[84],0x0e);assert.equal(f.pixels[152],0);f.clear().playfield('1'.padEnd(40,'0'),{mode:'asymmetric',height:1});assert.equal(f.pixels[0],0x0e);assert.equal(f.pixels[159],0);});
 test('sprites reflect bits, stretch horizontally and change color by row',()=>{const f=new VCSFrame().clear();f.sprite([128,1],{x:10,y:10,reflect:true,stretch:2,lineHeight:3,colors:[0x46,0x96]});assert.equal(f.pixels[10*160+24],0x46);assert.equal(f.pixels[12*160+25],0x46);assert.equal(f.pixels[13*160+10],0x96);assert.equal(f.pixels[13*160+24],0);});
@@ -147,4 +147,22 @@ test('clearing the frame clears the latched collisions',()=>{
  assert.equal(f.hit('a','b'),false);
  assert.deepEqual(f.hit('nothing'),[]);
  assert.throws(()=>f.sprite([255],{id:''}),/non-empty string/);
+});
+test('blit fills an existing buffer identically to the allocating path',()=>{
+ const f=new VCSFrame().clear(0x46);
+ f.playfield('10101010101010101010',{y:0,height:9,color:0x1c}).sprite([255],{x:3,y:2,color:0x8c});
+ const buffer=new Uint8ClampedArray(160*192*4);
+ f.blit(buffer);
+ assert.deepEqual([...buffer],[...f.rgba(1,1).data]);
+ assert.throws(()=>f.blit(new Uint8ClampedArray(16)),/RGBA bytes/);
+});
+test('greyscale keeps the luminance and drops the hue, as the color switch does',()=>{
+ for(const code of Object.keys(PALETTE).map(Number)){
+  const grey=greyscale(code);
+  assert.ok(Object.hasOwn(PALETTE,grey),`$${code.toString(16)} greyed to an unconfigured color`);
+  assert.equal(grey>>4,0,'greyscale must land on the grey ladder');
+  assert.equal(grey&0x0e,code&0x0e,'luminance must survive');
+  const [r,g,b]=[1,3,5].map(i=>parseInt(PALETTE[grey].slice(i,i+2),16));
+  assert.ok(r===g&&g===b,`$${grey.toString(16)} is not neutral`);
+ }
 });

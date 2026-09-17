@@ -27,6 +27,9 @@ export const PALETTE=Object.freeze({
 // Two players, two missiles and one ball is all the TIA can place on a scanline.
 // Reusing an object further down the screen is free, which is how real games draw
 // more than two things. Raise or replace this to build beyond the hardware.
+// What the console's colour switch does to a colour: hue 0 at the same luminance.
+// The palette is laid out as (hue << 4) | (luma << 1), so the hue simply drops away.
+export const greyscale=code=>code&0x0e;
 export const TIA_BUDGET=Object.freeze({sprites:2,missiles:3});
 export const UNLIMITED=Object.freeze({sprites:Infinity,missiles:Infinity});
 function integer(value,name){if(!Number.isInteger(value))throw new TypeError(`${name} must be an integer`);return value;}
@@ -139,7 +142,17 @@ export class VCSFrame {
   for(const [key,hex] of Object.entries(this.palette)){const i=Number(key)*4;lut[i]=parseInt(hex.slice(1,3),16);lut[i+1]=parseInt(hex.slice(3,5),16);lut[i+2]=parseInt(hex.slice(5,7),16);lut[i+3]=255;}
   this.cachedFor=this.palette;return this.cachedLut=lut;
  }
- rgba(scaleX=8,scaleY=5){scale(scaleX,'scaleX');scale(scaleY,'scaleY');const width=WIDTH*scaleX,height=HEIGHT*scaleY,data=new Uint8ClampedArray(width*height*4),lut=this.lut();for(let y=0;y<height;y++){const row=Math.floor(y/scaleY)*WIDTH;for(let x=0;x<width;x++){const c=this.pixels[row+Math.floor(x/scaleX)]*4,o=(y*width+x)*4;data[o]=lut[c];data[o+1]=lut[c+1];data[o+2]=lut[c+2];data[o+3]=255;}}return {width,height,data};}
+ // Writes the frame 1:1 into a buffer that already exists. The animation path calls
+ // this every frame, so presenting a frame allocates nothing at all.
+ blit(data){
+  if(data.length!==WIDTH*HEIGHT*4)throw new RangeError(`Blit target must hold ${WIDTH*HEIGHT*4} RGBA bytes`);
+  const lut=this.lut(),pixels=this.pixels;
+  for(let i=0,o=0;i<pixels.length;i++,o+=4){const c=pixels[i]*4;data[o]=lut[c];data[o+1]=lut[c+1];data[o+2]=lut[c+2];data[o+3]=255;}
+  return this;
+ }
+ rgba(scaleX=8,scaleY=5){scale(scaleX,'scaleX');scale(scaleY,'scaleY');const width=WIDTH*scaleX,height=HEIGHT*scaleY,data=new Uint8ClampedArray(width*height*4);
+  if(scaleX===1&&scaleY===1){this.blit(data);return {width,height,data};}
+  const lut=this.lut();for(let y=0;y<height;y++){const row=Math.floor(y/scaleY)*WIDTH;for(let x=0;x<width;x++){const c=this.pixels[row+Math.floor(x/scaleX)]*4,o=(y*width+x)*4;data[o]=lut[c];data[o+1]=lut[c+1];data[o+2]=lut[c+2];data[o+3]=255;}}return {width,height,data};}
  present(canvas,{raw=false}={}){const {width,height,data}=this.rgba(raw?1:8,raw?1:5);canvas.width=width;canvas.height=height;const ctx=canvas.getContext('2d');ctx.imageSmoothingEnabled=false;ctx.putImageData(new ImageData(data,width,height),0,0);return this;}
  stats(){return {colors:new Set(this.pixels).size,sprites:this.commands.filter(c=>c.kind==='sprite').length,playfieldBands:this.commands.filter(c=>c.kind==='playfield').length};}
 }
