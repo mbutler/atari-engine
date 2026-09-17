@@ -46,11 +46,46 @@ function charge(frame,kind,y,height){
 }
 const DIGITS=[['111','101','101','101','111'],['010','110','010','010','111'],['111','001','111','100','111'],['111','001','111','001','111'],['101','101','111','001','001'],['111','100','111','001','111'],['111','100','111','101','111'],['111','001','001','001','001'],['111','101','111','101','111'],['111','101','111','001','111']];
 export class VCSFrame {
- constructor(palette=PALETTE,{budget=TIA_BUDGET}={}){this.palette=palette;this.budget=budget;this.pixels=new Uint8Array(WIDTH*HEIGHT);this.commands=[];}
+ constructor(palette=PALETTE,{budget=TIA_BUDGET}={}){this.palette=palette;this.budget=budget;this.pixels=new Uint8Array(WIDTH*HEIGHT);this.commands=[];this.occupancy=null;this.slots=[];this.touches=new Set();this.drawing=null;}
+ // Collision is latched while drawing and read afterwards, the way a cartridge reads
+ // the TIA's collision registers during vertical blank. Overlap is pixel-exact rather
+ // than by bounding box, which is what makes 2600 games feel tight around the concave
+ // parts of a sprite. Tag an object with `id` to track it; untagged objects cost
+ // nothing. Draws sharing an id are one object, exactly as a reused register behaves,
+ // so a row of repeated enemies reports one hit and the game works out which from
+ // position. The background is not an object and never collides.
+ track(id){
+  if(typeof id!=='string'||!id)throw new TypeError('A collision id must be a non-empty string');
+  let bit=this.slots.indexOf(id);
+  if(bit<0){
+   if(this.slots.length>=32)throw new RangeError('A frame tracks at most 32 collision ids');
+   if(!this.occupancy)this.occupancy=new Uint32Array(WIDTH*HEIGHT);
+   this.slots.push(id);bit=this.slots.length-1;
+  }
+  return bit;
+ }
+ // Every pair between what already owns a pixel and what is arriving on it.
+ meet(mask,bit){for(let other=0;mask;other++,mask>>>=1)if((mask&1)&&other!==bit)this.touches.add(other<bit?other*32+bit:bit*32+other);}
+ paint(id,draw){const previous=this.drawing;if(id!==null&&id!==undefined)this.drawing=this.track(id);try{draw();}finally{this.drawing=previous;}}
+ collisions(){return [...this.touches].map(key=>[this.slots[Math.floor(key/32)],this.slots[key%32]].sort()).sort((a,b)=>a[0].localeCompare(b[0])||a[1].localeCompare(b[1]));}
+ // hit(a, b) asks about one pair; hit(a) lists everything a touched this frame.
+ hit(a,b){
+  if(b===undefined)return this.collisions().filter(pair=>pair.includes(a)).map(pair=>pair[0]===a?pair[1]:pair[0]);
+  const x=this.slots.indexOf(a),y=this.slots.indexOf(b);
+  return x>=0&&y>=0&&x!==y&&this.touches.has(x<y?x*32+y:y*32+x);
+ }
  color(code){if(!Object.hasOwn(this.palette,code))throw new RangeError(`Unconfigured color $${Number(code).toString(16)}`);return code;}
- clear(color=0){this.pixels.fill(this.color(color));this.commands=[];return this;}
+ clear(color=0){this.pixels.fill(this.color(color));this.commands=[];this.slots.length=0;this.touches.clear();if(this.occupancy)this.occupancy.fill(0);this.drawing=null;return this;}
  // Rectangles are internal raster operations; authors normally use the typed primitives.
- rect(x,y,w,h,color){[x,y,w,h].forEach(v=>integer(v,'coordinate'));this.color(color);for(let yy=Math.max(0,y);yy<Math.min(HEIGHT,y+h);yy++)for(let xx=Math.max(0,x);xx<Math.min(WIDTH,x+w);xx++)this.pixels[yy*WIDTH+xx]=color;return this;}
+ rect(x,y,w,h,color){
+  [x,y,w,h].forEach(v=>integer(v,'coordinate'));this.color(color);
+  const bit=this.drawing,occupancy=this.occupancy;
+  for(let yy=Math.max(0,y);yy<Math.min(HEIGHT,y+h);yy++)for(let xx=Math.max(0,x);xx<Math.min(WIDTH,x+w);xx++){
+   const at=yy*WIDTH+xx;this.pixels[at]=color;
+   if(bit!==null){const had=occupancy[at];if(had)this.meet(had,bit);occupancy[at]=had|(1<<bit);}
+  }
+  return this;
+ }
  background(y,height,color){this.rect(0,y,WIDTH,height,color);this.commands.push({kind:'background',y,height,color});return this;}
  // One background color per scanline, the way a game rewrites COLUBK down the
  // frame. `colorFor(line, offset)` returns a color, or null to leave the line be.
@@ -65,18 +100,18 @@ export class VCSFrame {
   this.commands.push({kind:'scanlines',y,height});return this;
  }
  // Each playfield bit is four color clocks wide. Half fields are 20 bits.
- playfield(bits,{y=0,height=8,color=0x0e,mode='mirror'}={}){
+ playfield(bits,{y=0,height=8,color=0x0e,mode='mirror',id=null}={}){
   if(!['mirror','repeat','asymmetric'].includes(mode))throw new RangeError('Unknown playfield mode');
   if(typeof bits!=='string'||!/^[01]+$/.test(bits)||bits.length!==(mode==='asymmetric'?40:20))throw new RangeError('Playfield requires 20 bits, or 40 in asymmetric mode');
   const row=mode==='asymmetric'?bits:bits+(mode==='mirror'?[...bits].reverse().join(''):bits);
-  [...row].forEach((bit,i)=>{if(bit==='1')this.rect(i*4,y,4,height,color);});
+  this.paint(id,()=>[...row].forEach((bit,i)=>{if(bit==='1')this.rect(i*4,y,4,height,color);}));
   this.commands.push({kind:'playfield',bits,y,height,color,mode});return this;
  }
  // NUSIZ: a player can be drawn as two or three copies at a fixed spacing, or as one
  // stretched object, but never both. Copies are one register, so they share a bitmap,
  // a color and a reflection, and they move together. Those restrictions are why a row
  // of 2600 objects reads as a grid of identical things flapping in lockstep.
- sprite(rows,{x=0,y=0,color=0x0e,stretch=1,lineHeight=2,reflect=false,colors=null,copies=1,spacing=32}={}){
+ sprite(rows,{x=0,y=0,color=0x0e,stretch=1,lineHeight=2,reflect=false,colors=null,copies=1,spacing=32,id=null}={}){
   if(![1,2,4].includes(stretch))throw new RangeError('Sprite stretch must be 1, 2 or 4');scale(lineHeight,'lineHeight');
   if(!Array.isArray(rows)||!rows.length||rows.some(r=>!Number.isInteger(r)||r<0||r>255))throw new RangeError('Sprite rows must be 8-bit integers');
   if(colors&&colors.length!==rows.length)throw new RangeError('One color per sprite row required');
@@ -88,11 +123,11 @@ export class VCSFrame {
   }
   const height=rows.length*lineHeight;
   charge(this,'sprite',y,height); // one register however many copies it paints
-  for(let copy=0;copy<copies;copy++){const left=x+copy*spacing;
-   rows.forEach((row,iy)=>{const ink=colors?colors[iy]:color;this.color(ink);for(let bit=0;bit<8;bit++)if(row&(1<<(7-bit)))this.rect(left+(reflect?7-bit:bit)*stretch,y+iy*lineHeight,stretch,lineHeight,ink);});}
+  this.paint(id,()=>{for(let copy=0;copy<copies;copy++){const left=x+copy*spacing;
+   rows.forEach((row,iy)=>{const ink=colors?colors[iy]:color;this.color(ink);for(let bit=0;bit<8;bit++)if(row&(1<<(7-bit)))this.rect(left+(reflect?7-bit:bit)*stretch,y+iy*lineHeight,stretch,lineHeight,ink);});}});
   this.commands.push({kind:'sprite',x,y,width:(copies-1)*spacing+8*stretch,height,copies,spacing:copies>1?spacing:0});return this;
  }
- missile(x,y,{width=1,height=2,color=0x0e}={}){if(![1,2,4,8].includes(width))throw new RangeError('Missile width must be 1, 2, 4 or 8');charge(this,'missile',y,height);this.rect(x,y,width,height,color);this.commands.push({kind:'missile',x,y,width,height});return this;}
+ missile(x,y,{width=1,height=2,color=0x0e,id=null}={}){if(![1,2,4,8].includes(width))throw new RangeError('Missile width must be 1, 2, 4 or 8');charge(this,'missile',y,height);this.paint(id,()=>this.rect(x,y,width,height,color));this.commands.push({kind:'missile',x,y,width,height});return this;}
  number(value,{x=0,y=0,color=0x0e,digits=2,scaleX=2,scaleY=3,gap=2}={}){
   integer(value,'value');if(value<0)throw new RangeError('Score cannot be negative');scale(scaleX,'scaleX');scale(scaleY,'scaleY');scale(digits,'digits');
   const str=String(value).padStart(digits,'0').slice(-digits);[...str].forEach((digit,i)=>DIGITS[Number(digit)].forEach((row,iy)=>[...row].forEach((bit,ix)=>{if(bit==='1')this.rect(x+i*(3*scaleX+gap)+ix*scaleX,y+iy*scaleY,scaleX,scaleY,color);})));return this;

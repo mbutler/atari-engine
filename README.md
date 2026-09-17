@@ -18,12 +18,14 @@ Open http://127.0.0.1:8043/ for the Arena and Room examples, and `/examples/soun
 | Engine | Cartridge |
 | --- | --- |
 | Palette framebuffer and drawing primitives | Maps and sprite artwork |
-| Display scaling | Movement and collision rules |
+| Display scaling and pixel-exact collision detection | Movement and collision rules |
 | Keyboard input, plus programmatic touch input | Meaning of the action button |
 | Fixed-step timing and pause on blur | Entities, objectives, scoring and persistence |
 | TIA sound primitives and the object budget | Game-specific sound effects and music |
 
-Reference artwork belongs in `examples`, not `src`. The engine has no cargo, worker, enemy, towing, inventory or delivery concepts. Collision helpers are not part of its default runtime.
+Reference artwork belongs in `examples`, not `src`. The engine has no cargo, worker, enemy, towing, inventory or delivery concepts. It detects
+that two objects overlapped, because the TIA does that in hardware, but it has no opinion
+about what an overlap means.
 
 ## Public API
 
@@ -37,6 +39,17 @@ Import from `src/index.mjs`:
   one register: they share a bitmap, a colour and a reflection, and they move together.
   Those restrictions are the point — they are why a row of 2600 objects reads as a grid of
   identical things flapping in lockstep rather than as a composition.
+- `frame.collisions()`, `frame.hit(a, b)`, `frame.hit(a)`: collision, latched while drawing
+  and read afterwards, the way a cartridge reads the TIA's collision registers during
+  vertical blank. Overlap is pixel-exact, not by bounding box, which is what makes objects
+  feel tight around the concave parts of a sprite. Tag an object with `id` on `sprite`,
+  `missile` or `playfield` to track it; untagged objects are invisible to collision and cost
+  nothing. Draws sharing an id are one object, exactly as a reused register behaves, so a row
+  of repeated enemies reports a single hit and the game works out which one from position.
+  Overlap is recorded whatever the draw order, including where a later object paints over an
+  earlier one. `clear()` releases the latch. The background is not an object and never
+  collides. A frame tracks up to 32 ids; the hardware has six, so staying near that keeps a
+  game honest.
 - `TIA_BUDGET`, `UNLIMITED`: the per-scanline object budget, `{sprites: 2, missiles: 3}` by default, matching two players plus two missiles and a ball. Drawing past it throws and names the scanline. Copies cost one player however many they paint, so two registers legitimately fill a scanline with six objects. Reusing an object further down the screen is free too, which is how real games draw more than two things. Pass `new VCSFrame(PALETTE, {budget})` to raise it, use `UNLIMITED` to lift it, or `null` to switch the check off. A rejected draw leaves the frame untouched.
 - `createDisplay(canvas)`: a reusable canvas presenter for animation. Call `display.present(frame)` each rendered frame.
 - `createInput({ target, onCommand })`: arrows/WASD and Space. `read()` returns `{ x, y, action }`. `press(code)` and `release(code)` support touch adapters. P and R call `onCommand('pause' | 'reset')`. `clear()` releases held input; `destroy()` removes listeners. The default target is `document`; embedded games can supply their focused element.

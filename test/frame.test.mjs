@@ -94,3 +94,57 @@ test('copy settings the hardware has no register for are refused',()=>{
  assert.equal(f.commands.at(-1).width,32);
  assert.equal(f.commands.at(-1).copies,1);
 });
+test('collision is pixel exact, not by bounding box',()=>{
+ const f=new VCSFrame().clear();
+ // Identical bounding boxes, interleaved pixels: nothing actually touches.
+ f.sprite([0xaa],{x:0,y:0,id:'a'});
+ f.sprite([0x55],{x:0,y:0,id:'b'});
+ assert.equal(f.hit('a','b'),false);
+ assert.deepEqual(f.collisions(),[]);
+ // Shift by one pixel and they interlock.
+ f.clear().sprite([0xaa],{x:0,y:0,id:'a'}).sprite([0x55],{x:1,y:0,id:'b'});
+ assert.equal(f.hit('a','b'),true);
+});
+test('overlap is latched whatever the draw order, even when painted over',()=>{
+ const f=new VCSFrame().clear();
+ // Two players and a missile stacked on one spot, which the budget does allow.
+ f.sprite([255],{x:0,y:0,id:'under'});
+ f.sprite([255],{x:0,y:0,id:'middle'});
+ f.missile(0,0,{id:'over'});
+ // The last draw owns the pixels, but every pair that met is still reported.
+ assert.deepEqual(f.collisions(),[['middle','over'],['middle','under'],['over','under']]);
+ assert.equal(f.hit('under','over'),true);
+});
+test('draws sharing an id are one object, as a reused register is',()=>{
+ const f=new VCSFrame().clear();
+ f.playfield('11110000000000000000',{y:0,height:8,color:0xc6,id:'pf'});
+ f.playfield('11110000000000000000',{y:40,height:8,color:0xc6,id:'pf'});
+ f.sprite([255],{x:0,y:40,id:'ball'});
+ assert.deepEqual(f.hit('ball'),['pf']);   // one object, one report
+ assert.equal(f.slots.length,2);
+ // Copies of one sprite never collide with themselves.
+ f.clear().sprite([255],{x:0,y:0,copies:3,spacing:16,id:'row'});
+ assert.deepEqual(f.collisions(),[]);
+});
+test('the background is not an object and untagged draws are not tracked',()=>{
+ const f=new VCSFrame().clear(0x46);
+ f.scanlines(0,20,()=>0x1c);
+ f.sprite([255],{x:0,y:0,id:'ship'});
+ assert.deepEqual(f.collisions(),[],'filled pixels behind an object are not a collision');
+ f.sprite([255],{x:0,y:0});                 // no id: invisible to collision
+ assert.deepEqual(f.collisions(),[]);
+ // A frame that never tags anything allocates no occupancy buffer at all.
+ const plain=new VCSFrame().clear();
+ plain.sprite([255],{x:0,y:0});
+ assert.equal(plain.occupancy,null);
+});
+test('clearing the frame clears the latched collisions',()=>{
+ const f=new VCSFrame().clear();
+ f.sprite([255],{x:0,y:0,id:'a'}).sprite([255],{x:0,y:0,id:'b'});
+ assert.equal(f.hit('a','b'),true);
+ f.clear();
+ assert.deepEqual(f.collisions(),[]);
+ assert.equal(f.hit('a','b'),false);
+ assert.deepEqual(f.hit('nothing'),[]);
+ assert.throws(()=>f.sprite([255],{id:''}),/non-empty string/);
+});
