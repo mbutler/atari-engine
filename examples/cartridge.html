@@ -29,7 +29,7 @@ beside it.</p>
   <tr><td>Console</td><td>1 Select (cycles variation) · 2 Reset · 3 Colour · 4 and 5 Difficulty</td></tr>
   <tr><td>Pause</td><td>P — and the game pauses itself when the window loses focus</td></tr>
 </table>
-<footer><p id="state"></p><p><a href="./">Reference studies</a> · <a href="./sound.html">Sound</a> · <a href="../README.md">Engine documentation</a></p></footer>
+<footer><p id="state"></p><p><a href="./">Reference studies</a> · <a href="./duel.html">Two-player duel</a> · <a href="./tanks.html">Tank duel</a> · <a href="./sound.html">Sound</a> · <a href="../README.md">Engine documentation</a></p></footer>
 <script type="module">
 import {createDisplay,createInput,createGamepad,combineInputs,createConsole,createLoop,
         createSound,createVoices,greyscale,PALETTE} from '../src/index.mjs';
@@ -53,14 +53,14 @@ const loop=createLoop({
   update:read=>{cart.update(read,panel.read());if(voices)voices.step();},
   render:()=>{
     const frame=cart.render();
-    frame.palette=panel.read().color?PALETTE:GREY;
+    frame.palette=panel.peek().color?PALETTE:GREY;
     display.present(frame);
     report();
   },
-  onPause:paused=>{stage.classList.toggle('paused',paused);if(paused&&voices)voices.silence();},
+  onPause:paused=>{stage.classList.toggle('paused',paused);if(paused){panel.clear();if(voices)voices.silence();}},
 });
 // P pauses; the loop also pauses itself when the tab is hidden or the window blurs.
-document.addEventListener('keydown',event=>{if(event.code==='KeyP')loop.togglePause();});
+document.addEventListener('keydown',event=>{if(event.code==='KeyP'&&!event.repeat)loop.togglePause();});
 function report(){
   document.querySelector('#state').textContent=
     `score ${cart.score} · lives ${cart.ram[RAM.lives]} · variation ${cart.ram[RAM.variation]+1} of 4 · `+

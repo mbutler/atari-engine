@@ -27,11 +27,14 @@ export function createConsole({target=document,keys=SWITCHES,onSwitch=()=>{}}={}
  const up=event=>release(event.code);
  target.addEventListener('keydown',down);target.addEventListener('keyup',up);
  const down_=name=>{for(const code of held)if(keys[code]===name)return true;return false;};
+ const peek=()=>({select:down_('select')||pending.has('select'),reset:down_('reset')||pending.has('reset'),
+                 color:state.color,difficulty:{left:state.left,right:state.right}});
  return {
   press,release,
+  // Presentation can inspect switches without consuming a simulation's pending tap.
+  peek,
   read(){
-   const panel={select:down_('select')||pending.has('select'),reset:down_('reset')||pending.has('reset'),
-                color:state.color,difficulty:{left:state.left,right:state.right}};
+   const panel=peek();
    pending.clear();return panel;
   },
   // Flipping a switch from a host's own interface rather than the keyboard.

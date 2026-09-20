@@ -12,9 +12,12 @@ export function createTiaChip(sampleRate,{gain=1,lowPass=10000,highPass=20}={}){
  // square wave, and that lopsidedness is why "div 31" buzzes instead of whistling.
  const DIV31=[0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0];
  const lpK=lowPass?1-Math.exp(-2*Math.PI*lowPass/sampleRate):1;
- const hpR=highPass?Math.exp(-2*Math.PI*highPass/sampleRate):0;
+ const hpR=highPass?Math.exp(-2*Math.PI*highPass/sampleRate):1;
  const fresh=()=>({control:0,frequency:0,volume:0,count:0,p4:1,p5:1,p9:1,by3:0,at31:0,count31:0,out:1});
  const chan=[fresh(),fresh()];
+ const samples=[null,null];
+ const channelIndex=channel=>{if(channel!==0&&channel!==1)throw new RangeError('channel must be 0 or 1');return channel;};
+ const stopSample=channel=>{channelIndex(channel);samples[channel]=null;chan[channel].volume=0;};
  let phase=0,lowZ=0,highX=0,highY=0;
  // Maximal-length shift registers: 15, 31 and 511 steps before they repeat.
  const poly4=c=>{c.p4=(c.p4>>1)|(((c.p4^(c.p4>>1))&1)<<3);return c.p4&1;};
@@ -45,23 +48,47 @@ export function createTiaChip(sampleRate,{gain=1,lowPass=10000,highPass=20}={}){
  const level=()=>chan[0].out*chan[0].volume+chan[1].out*chan[1].volume;
  return {
   CLOCK,tick,level,
+  // AUDC 0 holds the output high: rapid AUDV writes turn the channel into a
+  // four-bit DAC. Schedule those writes at audio rate, never at animation rate.
+  playSample(data,rate,{channel=0}={}){
+   channelIndex(channel);
+   if(!(data instanceof Uint8Array)||!data.length||data.some(v=>v>15))throw new RangeError('Samples must be a nonempty Uint8Array of four-bit values');
+   if(!Number.isFinite(rate)||rate<=0||rate>96000)throw new RangeError('Sample rate must be positive and at most 96000 Hz');
+   samples[channel]={data:data.slice(),rate,index:0,phase:0};
+   Object.assign(chan[channel],{control:0,frequency:0,out:1,volume:data[0]});
+  },
+  stopSample,
+  samplePlaying(channel=0){return !!samples[channelIndex(channel)];},
   write({channel=0,control,frequency,volume}){
    const c=chan[channel];if(!c)return;
+   if(samples[channel])return; // Speech owns this channel until it ends or is stopped.
    if(control!==undefined)c.control=control&15;
    if(frequency!==undefined)c.frequency=frequency&31;
    if(volume!==undefined)c.volume=volume&15;
   },
-  reset(){chan[0]=fresh();chan[1]=fresh();phase=lowZ=highX=highY=0;},
+  reset(){chan[0]=fresh();chan[1]=fresh();samples[0]=samples[1]=null;phase=lowZ=highX=highY=0;},
   // Zero-order hold from the 31.4 kHz chip rate up to the audio device rate, which
   // is what the real stepped output does, then the analog stages after it.
   render(out){
    for(let i=0;i<out.length;i++){
+    for(let channel=0;channel<2;channel++){
+     const sample=samples[channel];if(!sample)continue;
+     const elapsed=Math.floor(sample.phase+1e-10);
+     sample.index+=elapsed;sample.phase-=elapsed;
+     if(sample.index>=sample.data.length){stopSample(channel);continue;}
+     chan[channel].volume=sample.data[sample.index];
+     sample.phase+=sample.rate/sampleRate;
+    }
     phase+=CLOCK/sampleRate;
     while(phase>=1){phase-=1;tick();}
     const x=(chan[0].out*chan[0].volume+chan[1].out*chan[1].volume)/30;
     highY=x-highX+hpR*highY;highX=x;   // output coupling blocks the DC offset
     lowZ+=(highY-lowZ)*lpK;            // a television speaker rolls off the top end
     out[i]=lowZ*gain;
+   }
+   for(let channel=0;channel<2;channel++){
+    const sample=samples[channel];
+    if(sample&&sample.index+Math.floor(sample.phase+1e-10)>=sample.data.length)stopSample(channel);
    }
   },
  };

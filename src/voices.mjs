@@ -30,14 +30,17 @@ export function createVoices(sound,{channels=[0,1]}={}){
    if(first.control===undefined)throw new RangeError('An effect must set control on the effect itself or on its first frame');
    let target=channel;
    if(target===null){
-    target=channels.find(c=>!playing.has(c));
+    const available=channels.filter(c=>!sound.samplePlaying?.(c));
+    if(!available.length)return null;
+    target=available.find(c=>!playing.has(c));
     if(target===undefined){
-     const weakest=channels.slice().sort((a,b)=>playing.get(a).effect.priority-playing.get(b).effect.priority)[0];
+     const weakest=available.slice().sort((a,b)=>playing.get(a).effect.priority-playing.get(b).effect.priority)[0];
      if(playing.get(weakest).effect.priority>sounding.priority)return null;
      target=weakest;
     }
    }else{
     if(!channels.includes(target))throw new RangeError(`Channel ${target} is not part of this voice set`);
+    if(sound.samplePlaying?.(target))return null;
     const current=playing.get(target);
     if(current&&current.effect.priority>sounding.priority)return null;
    }
@@ -47,6 +50,7 @@ export function createVoices(sound,{channels=[0,1]}={}){
   // Advance every sounding channel by one frame. Call once per simulation step.
   step(){
    for(const [channel,state] of [...playing]){
+    if(sound.samplePlaying?.(channel)){playing.delete(channel);continue;}
     if(state.frame>=state.effect.frames){
      if(!state.effect.loop){playing.delete(channel);sound.off(channel);continue;}
      state.frame=0;
@@ -55,7 +59,7 @@ export function createVoices(sound,{channels=[0,1]}={}){
    }
    return voices;
   },
-  stop(channel){if(playing.delete(channel))sound.off(channel);return voices;},
+  stop(channel){if(playing.delete(channel)&&!sound.samplePlaying?.(channel))sound.off(channel);return voices;},
   silence(){for(const channel of [...playing.keys()])voices.stop(channel);return voices;},
   busy(channel){return playing.has(channel);},
   get active(){return [...playing.keys()];},

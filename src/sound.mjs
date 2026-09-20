@@ -27,8 +27,21 @@ export async function createSound({context=null,gain=.6,lowPass=10000,highPass=2
  const source=`${createTiaChip}
 class TiaProcessor extends AudioWorkletProcessor{
  constructor(options){super();this.chip=createTiaChip(sampleRate,options.processorOptions);
-  this.port.onmessage=event=>{if(event.data==='reset')this.chip.reset();else this.chip.write(event.data);};}
- process(inputs,outputs){this.chip.render(outputs[0][0]);return true;}
+  this.ids=[null,null];
+  this.port.onmessage=event=>{
+   const data=event.data;
+   if(data==='reset'){this.chip.reset();this.ids=[null,null];}
+   else if(data.type==='sample'){this.chip.playSample(data.samples,data.rate,{channel:data.channel});this.ids[data.channel]=data.id;}
+   else if(data.type==='stopSample'){this.chip.stopSample(data.channel);this.ids[data.channel]=null;}
+   else this.chip.write(data);
+  };}
+ process(inputs,outputs){
+  this.chip.render(outputs[0][0]);
+  for(let channel=0;channel<2;channel++)if(this.ids[channel]!==null&&!this.chip.samplePlaying(channel)){
+   this.port.postMessage({type:'sampleEnded',channel,id:this.ids[channel]});this.ids[channel]=null;
+  }
+  return true;
+ }
 }
 registerProcessor('tia',TiaProcessor);`;
  const url=URL.createObjectURL(new Blob([source],{type:'text/javascript'}));
@@ -36,12 +49,22 @@ registerProcessor('tia',TiaProcessor);`;
  const node=new AudioWorkletNode(ctx,'tia',{numberOfInputs:0,outputChannelCount:[1],processorOptions:{gain,lowPass,highPass}});
  node.connect(ctx.destination);
  const voices=[{control:0,frequency:0,volume:0},{control:0,frequency:0,volume:0}];
+ const playing=[null,null];let nextId=0,destroyed=false;
+ const finish=(channel,reason)=>{
+  const active=playing[channel];if(!active)return;
+  playing[channel]=null;voices[channel]={control:0,frequency:0,volume:0};active.resolve(reason);
+ };
+ node.port.onmessage=event=>{
+  const data=event.data;
+  if(data.type==='sampleEnded'&&playing[data.channel]?.id===data.id)finish(data.channel,'ended');
+ };
  const sound={
   context:ctx,node,
   // Writes the three registers of one channel. Games normally do this once a frame,
   // during vertical blank, exactly as a cartridge would.
   set(channel,{control,frequency,volume}={}){
    const voice=voices[range(channel,1,'channel')];
+   if(playing[channel])return sound;
    if(control!==undefined)voice.control=range(control,15,'control');
    if(frequency!==undefined)voice.frequency=range(frequency,31,'frequency');
    if(volume!==undefined)voice.volume=range(volume,15,'volume');
@@ -50,11 +73,27 @@ registerProcessor('tia',TiaProcessor);`;
   },
   // Nearest playable pitch on a pure-tone control. Returns how far off it landed.
   note(channel,control,hz,volume=8){const found=pitch(control,hz);sound.set(channel,{control,frequency:found.frequency,volume});return found;},
-  off(channel){return sound.set(channel,{volume:0});},
+  // An active sample owns one of the two channels; ordinary effect writes to
+  // that channel are ignored. off/silence deliberately cancel speech too.
+  playSample({samples,rate},{channel=0}={}){
+   range(channel,1,'channel');
+   if(destroyed)throw new Error('Sound has been destroyed');
+   if(!(samples instanceof Uint8Array)||!samples.length||samples.some(v=>v>15))throw new RangeError('Samples must be a nonempty Uint8Array of four-bit values');
+   if(!Number.isFinite(rate)||rate<=0||rate>96000)throw new RangeError('Sample rate must be positive and at most 96000 Hz');
+   finish(channel,'replaced');
+   const id=++nextId;let resolve;
+   const finished=new Promise(done=>{resolve=done;});playing[channel]={id,resolve};
+   voices[channel]={control:0,frequency:0,volume:samples[0]};
+   node.port.postMessage({type:'sample',channel,id,samples:samples.slice(),rate});
+   return {finished,stop(){if(playing[channel]?.id===id)sound.stopSample(channel);}};
+  },
+  samplePlaying(channel=0){return !!playing[range(channel,1,'channel')];},
+  stopSample(channel=0){range(channel,1,'channel');if(playing[channel]){node.port.postMessage({type:'stopSample',channel});finish(channel,'stopped');}return sound;},
+  off(channel){sound.stopSample(channel);return sound.set(channel,{volume:0});},
   silence(){return sound.off(0).off(1);},
   read(channel){return {...voices[range(channel,1,'channel')]};},
   resume(){return ctx.resume();},
-  async destroy(){sound.silence();node.port.postMessage('reset');node.disconnect();if(!context)await ctx.close();},
+  async destroy(){if(destroyed)return;destroyed=true;sound.silence();node.port.postMessage('reset');node.disconnect();node.port.close();if(!context)await ctx.close();},
  };
  return sound;
 }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {catcher,RAM,RAM_USED,art} from '../examples/cartridge.mjs';
-import {TIA_BUDGET} from '../src/index.mjs';
+import {TIA_BUDGET,createClock} from '../src/index.mjs';
 const PANEL={select:false,reset:false,color:true,difficulty:{left:'b',right:'b'}};
 const STILL={x:0,y:0,action:false};
 // The simulation is a deterministic fixed step with no hidden state, so a recorded
@@ -36,12 +36,45 @@ test('the cartridge holds itself to 1982 scope',()=>{
  assert.ok(Math.max(...Object.values(RAM))<RAM_USED);
  for(const glyph of Object.values(art))assert.equal(glyph.length,8,'sprites are eight rows of players');
 });
-test('a game plays out and ends without ever exceeding the hardware',()=>{
+test('a game plays out and ends within the sprite and missile budget',()=>{
  const {cart,peak}=tape(4000);
  assert.equal(peak,2,'two players is the whole budget, and it is used');
  assert.equal(cart.mode,2,'a session ends rather than running forever');
  assert.ok(cart.score>10,`a chasing player should score more than ${cart.score}`);
  assert.equal(cart.ram[RAM.lives],0);
+});
+test('catchup steps do not reuse a collision to catch a distant faller',()=>{
+ const cart=catcher();
+ cart.update(STILL,{...PANEL,reset:true});
+ cart.ram[RAM.fallerLive]=1;cart.ram[RAM.fallerX]=76;cart.ram[RAM.fallerY]=164;
+ cart.ram[RAM.fallerLive+1]=1;cart.ram[RAM.fallerX+1]=20;cart.ram[RAM.fallerY+1]=100;
+ assert.equal(cart.render().hit('catcher','faller'),true);
+ cart.update(STILL,PANEL);
+ cart.update(STILL,PANEL);
+ assert.equal(cart.score,1);
+ assert.equal(cart.ram[RAM.fallerLive+1],1,'the distant faller is still falling');
+});
+test('the same simulation tape produces identical RAM at different presentation rates',()=>{
+ // Record a chasing player's input once, then replay that fixed tape at each rate.
+ const recorder=catcher(),inputs=[];
+ recorder.update(STILL,{...PANEL,reset:true});
+ for(let i=0;i<1800;i++){
+  let target=-1;
+  for(let j=0;j<3;j++)if(recorder.ram[RAM.fallerLive+j]&&(target<0||recorder.ram[RAM.fallerY+j]>recorder.ram[RAM.fallerY+target]))target=j;
+  const input={...STILL,x:target<0?0:Math.sign(recorder.ram[RAM.fallerX+target]-recorder.ram[RAM.catcherX])};
+  inputs.push(input);recorder.update(input,PANEL);
+ }
+ assert.ok(recorder.score>0,'the tape exercises collisions');
+ for(const fps of [20,30,60,120,144]){
+  const cart=catcher(),clock=createClock();let step=0;
+  cart.update(STILL,{...PANEL,reset:true});
+  for(let frame=0;frame<fps*30;frame++){
+   clock.advance(1/fps,()=>cart.update(inputs[step++],PANEL));
+   cart.render();
+  }
+  assert.equal(step,inputs.length);
+  assert.deepEqual(cart.ram,recorder.ram,`${fps} Hz presentation changed the game`);
+ }
 });
 test('every position stays a whole pixel',()=>{
  const {cart}=tape(900);

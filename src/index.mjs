@@ -8,3 +8,4 @@ export {createClock,createLoop} from './loop.mjs';
 export {createTiaChip,AUDIO_CLOCK,TONES,pitch} from './tia.mjs';
 export {createSound,AUDC} from './sound.mjs';
 export {createVoices} from './voices.mjs';
+export {encodeSpeech} from './speech.mjs';

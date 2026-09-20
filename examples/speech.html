@@ -1,0 +1,29 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Atari engine — Speech lab</title><style>
+:root{color-scheme:dark;font:15px system-ui;color:#ddd;background:#171717}
+body{max-width:800px;margin:auto;padding:32px}h1{font-size:30px;font-weight:500}p{color:#aaa;line-height:1.6}a{color:#cbc5a3}
+fieldset{border:1px solid #444;padding:20px;margin:24px 0}legend{color:#cbc5a3;padding:0 8px}
+button,select{background:#222;color:#ddd;border:1px solid #666;padding:10px 16px;font:inherit;cursor:pointer}
+button:disabled{opacity:.4;cursor:default}button:hover:not(:disabled){border-color:#ddd}
+.controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:18px 0}audio{width:100%;margin-top:12px}
+label{display:block;margin:12px 0}input{max-width:100%}small{color:#aaa}#status{min-height:3em}
+</style></head><body>
+<p>ATARI ENGINE / SPEECH LAB</p><h1>Sixteen levels. A robot voice.</h1>
+<p>The 2600 can speak by holding a sound channel high and writing speech samples to its
+four-bit volume register. This lab sends those writes through the engine’s TIA and output
+filters. Speech occupies one of the two channels.</p>
+<fieldset><legend>1 · Source voice</legend>
+<p id="source-name">Robot alert. Prepare for battle. — generated Zarvox demo</p>
+<audio id="original" controls src="./audio/robot-alert.wav"></audio>
+<label>Or choose a speech recording <input id="file" type="file" accept="audio/*"></label>
+<small>Files are decoded locally in your browser. The demo is a separate synthetic voice, not a recording from Berzerk.</small>
+</fieldset>
+<fieldset><legend>2 · TIA playback</legend>
+<button id="enable">Enable speech</button>
+<div class="controls"><label for="rate">Sample rate</label><select id="rate"><option value="4000">4,000 Hz</option><option value="6000">6,000 Hz</option><option value="8000" selected>8,000 Hz</option><option value="12000">12,000 Hz</option></select></div>
+<div class="controls"><button id="play" disabled>Play through TIA</button><button id="effect" disabled>Effect on channel 1</button><button id="stop" disabled>Stop all</button></div>
+<p id="status" role="status">Enable speech to load the demo.</p>
+<small>These are comparison rates, not measured Berzerk presets. Exact matching needs the same source samples and register-write timing; the engine’s output filters remain an approximation.</small>
+</fieldset>
+<p><a href="./sound.html">Tone lab</a> · <a href="./tanks.html">Tanks</a> · <a href="./">Reference studies</a> · <a href="../README.md">Engine documentation</a></p>
+<script type="module" src="./speech-lab.mjs"></script></body></html>

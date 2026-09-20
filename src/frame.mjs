@@ -217,6 +217,8 @@ export class VCSFrame {
   this.commands.push({kind:'sprite',x,y,width:(copies-1)*spacing+8*stretch,height,copies,spacing:copies>1?spacing:0});return this;
  }
  missile(x,y,{width=1,height=2,color=0x0e,id=null}={}){if(![1,2,4,8].includes(width))throw new RangeError('Missile width must be 1, 2, 4 or 8');charge(this,'missile',y,height);this.paint(id,()=>this.rect(x,y,width,height,color));this.commands.push({kind:'missile',x,y,width,height});return this;}
+ // Score overlay: glyphs do not consume the sprite budget. Hardware score-register
+ // scheduling is outside this renderer; keep score rows separate from gameplay.
  number(value,{x=0,y=0,color=0x0e,digits=2,scaleX=1,scaleY=2,gap=2,font=SCORE_FONT}={}){
   integer(value,'value');if(value<0)throw new RangeError('Score cannot be negative');scale(scaleX,'scaleX');scale(scaleY,'scaleY');scale(digits,'digits');
   if(!Array.isArray(font)||font.length!==10)throw new RangeError('A score font needs ten digits');

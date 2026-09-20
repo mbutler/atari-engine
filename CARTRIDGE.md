@@ -12,8 +12,10 @@ shape, not its design.
 
 Every cartridge should pass all of these. They are not preferences.
 
-- **Two players, three missiles, one playfield per scanline.** The engine throws if you
-  exceed it. Reusing an object further down the screen is free; repeated copies of one
+- **Two players, three missiles, one playfield per scanline.** The engine checks the
+  sprite and missile counts. The cartridge must keep playfield draws within this discipline.
+  `number()` is an unbudgeted score overlay: the reference uses it for its four-digit score,
+  without modelling the register scheduling a hardware score needs. Reusing an object further down the screen is free; repeated copies of one
   player cost nothing extra. If a screen cannot be composed inside this, the design is
   wrong — and you find that out on day one rather than in month three.
 - **128 bytes of state, and the stack shares them.** Aim for under 100.
@@ -88,8 +90,13 @@ registers during vertical blank, not on a timer of its own.
 
 ## Collision
 
-Read it from the frame you just drew, at the top of the next `update`. That is when a
-cartridge would read the TIA's collision registers.
+Build the collision frame from current cartridge state at the start of every `update`,
+then read its latches before moving objects. The reference does this with `render()`,
+which draws into its framebuffer without presenting it to the browser.
+
+The browser loop may run several simulation steps before presenting, or present several
+times between steps. Collision generation must therefore belong to each simulation step;
+reusing the last presented frame can miss a collision or award the same catch twice.
 
 Objects sharing an `id` are one object, exactly as a reused register is. A row of repeated
 enemies reports a single hit and the game works out which one from position — that is not

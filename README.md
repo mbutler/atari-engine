@@ -11,7 +11,7 @@ npm test
 npm start
 ```
 
-Open http://127.0.0.1:8043/ for the Arena, Room and Invaders studies, `/examples/cartridge.html` for a playable reference cartridge, and `/examples/sound.html` for the tone lab. No install or build step is required. `PORT` changes the local server port. This directory can be copied elsewhere without any game project; it contains no imports from Cargo. Node 20 or later is needed for the example server and tests. The engine itself runs as browser ES modules.
+Open http://127.0.0.1:8043/ for the Arena, Room and Invaders studies, `/examples/cartridge.html` for a playable reference cartridge, `/examples/duel.html` for a two-player paddle game, `/examples/tanks.html` for a two-joystick tank game, `/examples/sound.html` for the tone lab, and `/examples/speech.html` for speech comparisons. No install or build step is required. `PORT` changes the local server port. This directory can be copied elsewhere without any game project; it contains no imports from Cargo. Node 20 or later is needed for the example server and tests. The engine itself runs as browser ES modules.
 
 ## Ownership
 
@@ -58,7 +58,7 @@ Import from `src/index.mjs`:
   earlier one. `clear()` releases the latch. The background is not an object and never
   collides. A frame tracks up to 32 ids; the hardware has six, so staying near that keeps a
   game honest.
-- `TIA_BUDGET`, `UNLIMITED`: the per-scanline object budget, `{sprites: 2, missiles: 3}` by default, matching two players plus two missiles and a ball. Drawing past it throws and names the scanline. Copies cost one player however many they paint, so two registers legitimately fill a scanline with six objects. Reusing an object further down the screen is free too, which is how real games draw more than two things. Pass `new VCSFrame(PALETTE, {budget})` to raise it, use `UNLIMITED` to lift it, or `null` to switch the check off. A rejected draw leaves the frame untouched.
+- `TIA_BUDGET`, `UNLIMITED`: the per-scanline object budget, `{sprites: 2, missiles: 3}` by default, matching two players plus two missiles and a ball. Drawing past it throws and names the scanline. Copies cost one player however many they paint, so two registers legitimately fill a scanline with six objects. Reusing an object further down the screen is free too, which is how real games draw more than two things. Pass `new VCSFrame(PALETTE, {budget})` to raise it, use `UNLIMITED` to lift it, or `null` to switch the check off. A draw rejected by the budget check leaves the frame untouched. The check covers `sprite` and `missile` calls; `number()` is an unbudgeted score overlay, and playfield calls are not limited per scanline.
 - `createDisplay(canvas, { fit, within, background, tolerance })`: a reusable canvas
   presenter for animation. Call `display.present(frame)` each rendered frame. It reuses one
   image for the life of the display, so presenting allocates nothing; `frame.blit(data)` is
@@ -78,7 +78,7 @@ Import from `src/index.mjs`:
   1280 by 960 and wastes two thirds of the panel, while 11 by 7 pixels fills 1760 by 1344 at
   a shape 1.8% off. Where no whole-pixel size is within tolerance it takes the nearest one
   that fits and reports `exact: false`, rather than refusing and drawing something tiny.
-- `createInput({ target, onCommand })`: arrows/WASD and Space. `read()` returns `{ x, y, action }`. `press(code)` and `release(code)` support touch adapters. P and R call `onCommand('pause' | 'reset')`. `clear()` releases held input; `destroy()` removes listeners. The default target is `document`; embedded games can supply their focused element.
+- `createInput({ target, keys, onCommand })`: arrows/WASD and Space by default. `keys` replaces that map with key-code-to-action bindings (`left`, `right`, `up`, `down`, `action`), so two players can share a keyboard without sharing controls. `read()` returns `{ x, y, action }`. `press(code)` and `release(code)` support touch adapters. P and R call `onCommand('pause' | 'reset')`. `clear()` releases held input; `destroy()` removes listeners. The default target is `document`; embedded games can supply their focused element.
 - `createGamepad({ index, deadzone, buttons, axes, pads })`: a physical stick, polled on
   each `read()` because axes have no events. The digital reading matches the keyboard's, so
   a cartridge cannot tell them apart, and the d-pad wins whenever it speaks. `analog` carries
@@ -90,6 +90,7 @@ Import from `src/index.mjs`:
   direction wins and any of them can fire, so a keyboard and a stick are interchangeable.
 - `createConsole({ target, keys, onSwitch })`: the machine's front panel, which is not the
   controller. `read()` returns `{ select, reset, color, difficulty: { left, right } }`.
+  `peek()` returns the same snapshot without consuming pending taps; use it for presentation.
   Select and Reset are momentary and latch a tap the way the action button does, so a press
   between two reads is never missed; held down they keep reading true, which is how a real
   console runs through variations, and a game wanting one step per press debounces it
@@ -101,7 +102,8 @@ Import from `src/index.mjs`:
   27 of them and Space Invaders 112, so a faithful clone needs this.
 - `SCORE_FONT`: ten digits as eight-pixel player graphics, which is what a score is made of
   on real hardware, so the strokes are thick rather than a thin grid. Pass `font` to `number`
-  to replace it with any ten 8-bit glyphs.
+  to replace it with any ten 8-bit glyphs. `number()` uses those shapes as an unbudgeted
+  overlay; it does not simulate player-register scheduling for scores.
 - `greyscale(code)`: what the colour switch does to a colour, hue 0 at the same luminance.
   Map a palette through it and assign the result to `frame.palette` to render in black and
   white.
@@ -156,9 +158,65 @@ The divide-by-31 pattern in `src/tia.mjs` is the one constant transcribed from
 documentation rather than derived; its period is verified, but the exact run structure
 decides which harmonic dominates and is worth checking against a reference recording.
 
-Next: a small paddle cartridge to exercise input, graphics and audio together without
-sharing Cargo's physics,. New abstractions should be earned by actual
-examples. No package publishing, editor or asset pipeline is planned yet.
+The Catch reference cartridge exercises input, graphics and audio together without
+sharing Cargo's physics. New abstractions should be earned by actual examples.
+No package publishing, editor or asset pipeline is planned yet.
+
+## Digitized speech
+
+[The speech lab](examples/speech.html) compares a source recording with four-bit
+TIA playback at selectable rates. It includes a generated robot phrase and can
+load audio files locally. The demo is a distinct Zarvox voice, not Berzerk audio.
+
+The documented Berzerk VE technique holds AUDC at 0 and rapidly writes sample
+values to AUDV, using the channel as a four-bit DAC. See SvOlli’s
+[Atari 2600 technical presentation](https://fahrplan.events.ccc.de/congress/2011/Fahrplan/attachments/2004_28c3-4711-Ultimate_Atari_2600_Talk.pdf).
+This engine now schedules those writes inside the audio worklet, passes them
+through the same TIA output filters, and reserves the chosen channel until speech
+ends. The second channel remains available for effects. There is no extra voice
+mixed around the two-channel budget.
+
+```js
+import {createSound, encodeSpeech} from './src/index.mjs';
+const sound = await createSound();
+await sound.resume(); // From a user gesture.
+// monoPCM is a Float32Array in [-1, 1], with its source sample rate.
+const clip = encodeSpeech(monoPCM, sourceRate, {rate: 8000});
+const speech = sound.playSample(clip, {channel: 0});
+const reason = await speech.finished; // 'ended', 'stopped', or 'replaced'
+```
+
+- `encodeSpeech` averages source intervals when reducing the rate, clamps to
+  [-1, 1], and quantizes to 0–15. It returns `{samples: Uint8Array, rate}`.
+  Samples are stored unpacked, one byte per four-bit value. Cartridge assets may
+  supply their own exact values and rate directly, avoiding this conversion.
+- `sound.playSample(clip, {channel})` starts immediately on the audio thread and
+  replaces speech already on that channel. Its handle has `stop()` and `finished`.
+  Old handles cannot cancel their replacements. `samplePlaying(channel)` reports
+  ownership; `stopSample(channel)`, `off(channel)`, `silence()` and `destroy()` cancel
+  it. Completion is reported after the audio block containing the final sample.
+- Effects cannot write over an active sample. `createVoices` skips occupied speech
+  channels, discards an interrupted effect when stepped, and lets effects use the
+  other channel. A claimed channel is muted on completion; old effects are not
+  restored. `read(channel)` reflects commanded registers, not every audio-rate write.
+- Headless use: `chip.playSample(samples, rate, {channel})`, `samplePlaying`, and
+  `stopSample` expose the same scheduler in `createTiaChip`. `render()` advances
+  sample playback. `tick()` alone advances only the tone circuit. Setting either
+  output filter cutoff to zero bypasses that filter.
+- The cartridge decides whether gameplay pauses during a phrase. Speech uses the
+  audio clock independently of rendering; call `sound.silence()` when pausing if it
+  should stop with the game.
+
+**Fidelity boundary:** this implements the TIA sample-output mechanism, not the
+arcade speech synthesizer or an exact Berzerk Enhanced recording. The original
+arcade uses an S14001A speech chip, as represented in
+[MAME’s Berzerk driver](https://github.com/mamedev/mame/blob/master/src/mame/stern/berzerk.cpp).
+Getting the same voice requires the right source speech as well as the output
+path. The lab’s 8 kHz default is a comparison setting, not a measured Berzerk rate.
+Exact matching still needs reference sample values and write timing, plus output
+filter calibration against a recording. Nonuniform CPU register timing, nonlinear
+analog response, and CPU/video contention are not modelled. Other voice-capable
+cartridges may need different playback schemes or additional sound hardware.
 
 ## Writing a cartridge
 
@@ -169,11 +227,55 @@ state, one verb, whole-pixel motion, variations instead of levels, and what belo
 console rather than the game. `examples/cartridge.mjs` is a working reference — a dull
 game on purpose, whose job is to show the wiring and to prove the engine's own claims.
 
+## Two players, no paddle hardware
+
+Open [Duel](examples/duel.html) for a local first-to-seven match. Blue uses W/S and
+Space; red uses Up/Down and Enter. A button on either gamepad also starts a match.
+The first gamepad controls blue and the second controls red, using a stick or D-pad.
+Keyboard and gamepad can be mixed, and no physical paddle controller is needed.
+Press a button on connected gamepads so the browser can discover them.
+
+Select (1) switches between normal and fast before a match; Reset (2 or R) starts
+again. The left and right difficulty switches (4 and 5) independently shorten the
+respective bat. P pauses both players; leaving the window pauses automatically.
+Enable sound with the page button. Scores stop at seven and either player can start
+a new match with a fresh action press.
+
+`examples/duel-controls.mjs` keeps two input ports separate and combines keyboard
+and gamepad only within each port. `examples/duel.mjs` owns rules and 15 bytes of
+state; `examples/duel-host.mjs` wires the browser, switches, display and two sound
+channels. The court uses two sprites and one missile, with the documented score
+overlay exception. Tests exercise independent input, scoring, bounces, difficulty,
+and deterministic play across presentation rates.
+
+## Two full joysticks
+
+Open [Tanks](examples/tanks.html) for a two-player tank duel. Both ports use the
+complete direction-and-fire input: left/right turns through eight headings,
+up/down drives forward/backward, and action fires. Blue uses WASD plus Space;
+red uses the arrow keys plus Enter. Two standard gamepads work through the same
+ports, with a stick or D-pad and either of the first two face buttons. A keyboard
+can replace either gamepad independently.
+
+First to five hits wins. Each tank has one shell at a time; holding fire shoots
+again when the shell is gone and the reload timer allows it. Simultaneous hits
+award both players a point, and simultaneous fifth hits are a draw. A fresh action
+press starts another match. Select chooses an open field or cover before play;
+the two difficulty switches independently give their player a longer reload.
+Reset, colour, pause, sound and fullscreen work as in Duel.
+
+`examples/tanks-controls.mjs` demonstrates the two complete joystick mappings.
+`examples/tanks.mjs` keeps 28 bytes of state and uses two player sprites, at most
+two missiles, and one playfield per scanline, plus the score overlay. Movement
+collisions resolve both proposed positions together; shell collisions are checked
+at each short simulation step. Each player uses a separate audio channel, where
+hit sounds take priority over firing. Browser rendering never advances the game.
+
 ## Working with Impossible Cartridge
 
 The game project has one local symlink, `prototype/atari-engine`, to this project. Its existing graphics module is now a compatibility re-export. Cargo imports this engine, while its state and towing code stay in `prototype/graphics`. The existing local game URLs continue to work. If either project moves, update that link or serve a copied/versioned engine folder under the same path.
 
-This is a standalone package directory within the current workspace. It has not been published or initialized as a separate Git repository.
+This is a standalone Git repository. The package is private and has not been published.
 
 ## References
 

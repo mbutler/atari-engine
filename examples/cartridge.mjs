@@ -84,9 +84,9 @@ export function catcher({ram=new Uint8Array(128),voices=null}={}){
   // position here is a whole pixel, which is what keeps the motion reading as a 2600
   // rather than as something with a floating point camera.
   update(input,panel){
-   // Collision is read from the frame just drawn, the way a cartridge reads the TIA's
-   // registers during vertical blank.
-   const touching=frame.hit('catcher','faller');
+   // Build collision latches from the current state once per simulation step.
+   // Browser presentation may skip steps or repeat them on a faster display.
+   const touching=cartridge.render().hit('catcher','faller');
    if(panel.reset){begin();return cartridge;}
    if(ram[RAM.mode]!==1){
     if(panel.select)ram[RAM.variation]=(ram[RAM.variation]+1)&3;

@@ -20,6 +20,22 @@ test('momentary switches latch a tap, and holding Select keeps reading true',()=
  assert.equal(panel.read().reset,true);
  panel.destroy();
 });
+test('presentation can inspect switches without consuming Select or Reset taps',()=>{
+ const panel=createConsole({target:new EventTarget()});
+ for(const [code,name] of [['Digit1','select'],['Digit2','reset']]){
+  panel.press(code);panel.release(code);
+  for(let frame=0;frame<3;frame++){
+   const snapshot=panel.peek();
+   assert.equal(snapshot[name],true);
+   snapshot.difficulty.left='a';
+  }
+  const read=panel.read();
+  assert.equal(read[name],true,'the next simulation receives the tap');
+  assert.equal(read.difficulty.left,'b','snapshots cannot change the switches');
+  assert.equal(panel.read()[name],false,'a tap is consumed exactly once');
+ }
+ panel.destroy();
+});
 test('toggle switches flip once per press, not per key repeat',()=>{
  const changes=[],panel=createConsole({target:new EventTarget(),onSwitch:(name,value)=>changes.push([name,value])});
  assert.deepEqual(panel.read(),{select:false,reset:false,color:true,difficulty:{left:'b',right:'b'}});
